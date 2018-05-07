@@ -1,0 +1,62 @@
+library(fields)
+setwd("/scratch.global/nosha003/wgbs_schmitz/PH207")
+data <- read.table(file="CG_gene_metaplot.txt", header=T, sep="\t")
+data2 <- read.table(file="CHG_gene_metaplot.txt", header=T, sep="\t")
+data3 <- read.table(file="CHH_gene_metaplot.txt", header=T, sep="\t")
+
+#look just at flanking 1kb of FGS
+data.sub=subset(data,data$relative_distance < 2000 & data$relative_distance > -1000)
+data.sub2=subset(data2,data2$relative_distance < 2000 & data2$relative_distance > -1000)
+data.sub3=subset(data3,data3$relative_distance < 2000 & data3$relative_distance > -1000)
+
+#get 100 bins across the relative gene distance and get stats on your data column
+stats.test=stats.bin(data.sub$relative_distance,data.sub$count,breaks=seq(-1000,2000,100))
+stats.test2=stats.bin(data.sub2$relative_distance,data.sub2$count,breaks=seq(-1000,2000,100))
+stats.test3=stats.bin(data.sub3$relative_distance,data.sub3$count,breaks=seq(-1000,2000,100))
+
+p.1=cbind(matrix(stats.test$centers,ncol=1),stats.test$stats["mean",])
+p.2=cbind(matrix(stats.test2$centers,ncol=1),stats.test2$stats["mean",])
+p.3=cbind(matrix(stats.test3$centers,ncol=1),stats.test3$stats["mean",])
+
+png("PH207_V2_methylation_gene_metaplot.png")
+par(mfrow=c(2,1))
+par(mar = rep(2,4))
+plot(x=NULL, y=NULL,xlim=c(-1000,2000),ylim=c(0,1),xlab="",ylab='read count',main='Methylation across FGS')
+lines(p.1,col=1,lwd=1)
+lines(p.2,col=2,lwd=1)
+lines(p.3,col=3,lwd=1)
+xline(0,lty=2,col='black')
+xline(1000,lty=2,col='black')
+legend("topright",c('CG', 'CHG', 'CHH'),col=c(1,2,3),lty=1,lwd=2,cex=0.7)
+dev.off()
+
+
+data <- read.table(file="CG_gene_metaplot2.txt", header=T, sep="\t")
+data2 <- read.table(file="CHG_gene_metaplot2.txt", header=T, sep="\t")
+data3 <- read.table(file="CHH_gene_metaplot2.txt", header=T, sep="\t")
+
+#look just at flanking 1kb of FGS
+data.sub=subset(data,data$relative_distance < 2000 & data$relative_distance > -1000)
+data.sub2=subset(data2,data2$relative_distance < 2000 & data2$relative_distance > -1000)
+data.sub3=subset(data3,data3$relative_distance < 2000 & data3$relative_distance > -1000)
+
+#get 100 bins across the relative gene distance and get stats on your data column
+stats.test=stats.bin(data.sub$relative_distance,data.sub$count,breaks=seq(-1000,2000,100))
+stats.test2=stats.bin(data.sub2$relative_distance,data.sub2$count,breaks=seq(-1000,2000,100))
+stats.test3=stats.bin(data.sub3$relative_distance,data.sub3$count,breaks=seq(-1000,2000,100))
+
+p.1=cbind(matrix(stats.test$centers,ncol=1),stats.test$stats["mean",])
+p.2=cbind(matrix(stats.test2$centers,ncol=1),stats.test2$stats["mean",])
+p.3=cbind(matrix(stats.test3$centers,ncol=1),stats.test3$stats["mean",])
+
+png("PH207_Root_methylation_gene_metaplot.png")
+par(mfrow=c(2,1))
+par(mar = rep(2,4))
+plot(x=NULL, y=NULL,xlim=c(-1000,2000),ylim=c(0,1),xlab="",ylab='read count',main='Methylation across FGS')
+lines(p.1,col=1,lwd=1)
+lines(p.2,col=2,lwd=1)
+lines(p.3,col=3,lwd=1)
+xline(0,lty=2,col='black')
+xline(1000,lty=2,col='black')
+legend("topright",c('CG', 'CHG', 'CHH'),col=c(1,2,3),lty=1,lwd=2,cex=0.7)
+dev.off()
