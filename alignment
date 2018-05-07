@@ -1,0 +1,33 @@
+# Map WGBS data to reference genome using BSMAP (BSMAP manual: https://sites.google.com/a/brown.edu/bioinformatics-in-biomed/bsmap-for-methylation)
+
+# make tab-delimited names file (/home/springer/nosha003/names_file.txt)
+## columns: read_1, read_2, name, umgc_directory
+
+cd /scratch.global/nosha003/
+## Run pipeline with fastq.gz files in scratch directory (/scratch.global/nosha003/reads)
+
+# trim reads
+bash /home/springer/nosha003/pete/scripts/springerlab_methylation/SeqCap/01-trim_galore_qsub.sh /home/springer/nosha003/names_file.txt
+
+# bsmap mapping
+bash /home/springer/nosha003/pete/scripts/springerlab_methylation/SeqCap/02-bsmap_qsub.sh /home/springer/nosha003/names_file.txt /home/springer/nosha003/database/B73v4/fasta/Zea_mays.AGPv4.dna.toplevel.chr.fa
+
+# fix sam files
+bash /home/springer/nosha003/pete/scripts/springerlab_methylation/SeqCap/03-fix-sort-bsmap_qsub.sh /home/springer/nosha003/names_file.txt
+
+# filter
+bash /home/springer/nosha003/pete/scripts/springerlab_methylation/SeqCap/04-filter_qsub.sh /home/springer/nosha003/names_file.txt /home/springer/pcrisp/Public/maize/Zea_mays.AGPv4.dna.toplevel.chr.fa /home/springer/nosha003/database/B73v4/B73v4_100bp_bins.txt 
+
+# methylation data
+module load samtools
+samtools faidx /home/springer/nosha003/database/B73v4/fasta/Zea_mays.AGPv4.dna.toplevel.fa
+cut -f 1-2 /home/springer/nosha003/database/B73v4/fasta/Zea_mays.AGPv4.dna.toplevel.fa.fai > /home/springer/nosha003/database/B73v4/B73v4_chr_size.txt
+
+bash /home/springer/nosha003/pete/scripts/springerlab_methylation/SeqCap/05-summarise_methylation_qsub.sh /home/springer/nosha003/names_file.txt /home/springer/nosha003/database/B73v4/fasta/Zea_mays.AGPv4.dna.toplevel.chr.fa /home/springer/nosha003/database/B73v4/B73v4_100bp_bins.txt 
+
+bash /home/springer/nosha003/pete/scripts/springerlab_methylation/SeqCap/07-tiles_bed_to_bigWig_qsub.sh /home/springer/nosha003/names_file.txt /home/springer/nosha003/database/B73v4/B73v4_chr_size.txt
+## change file paths in /home/springer/nosha003/pete/scripts/springerlab_methylation/SeqCap/07-tiles_bed_to_bigWig2.sh
+
+
+## PH207 fasta: /home/maize/shared/databases/genomes/Zea_mays/PH207/ZmaysPH207_443_v1.0.fa
+## PH207 bins: /home/springer/nosha003/database/PH207/PH207_100bp_bins.txt
