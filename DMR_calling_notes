@@ -1,0 +1,1266 @@
+# WGBS: From 100bp bins to DMR calls
+
+## Make id file
+column1: sequence_id_pe1
+column2: sequence_id_pe2
+column3: name
+column4: umgc_folder
+column5: scratch_folder
+column6: home_folder
+
+JN25_BS_S8_R1_001	JN25_BS_S8_R2_001	B73_V2	170524_D00635_0241_BCB0RCANXX /scratch.global/nosha003/wgbs_schmitz/analysis/tiles /home/springer/nosha003/wgbs_schmitz/tiles_output
+
+## Make 100bp tiles for CG, CHG, CHH
+```{r eval=F}
+#6Nov2017
+#wgbs_bins.sh
+#make counts for complete list of 100bp tiles (including those without data)
+	
+#!/bin/bash
+#PBS -l walltime=08:00:00,nodes=1:ppn=1,mem=5gb
+#PBS -o /scratch.global/nosha003/e_o/bins_o
+#PBS -e /scratch.global/nosha003/e_o/bins_e
+#PBS -N bins
+#PBS -V
+#PBS -r n
+
+SAMPLE1="$(/bin/sed -n ${PBS_ARRAYID}p ${LIST} | cut -f 1)"
+SAMPLE2="$(/bin/sed -n ${PBS_ARRAYID}p ${LIST} | cut -f 2)"
+NAME="$(/bin/sed -n ${PBS_ARRAYID}p ${LIST} | cut -f 3)"
+UMGC="$(/bin/sed -n ${PBS_ARRAYID}p ${LIST} | cut -f 4)"
+SCRATCH="$(/bin/sed -n ${PBS_ARRAYID}p ${LIST} | cut -f 5)"
+HOME="$(/bin/sed -n ${PBS_ARRAYID}p ${LIST} | cut -f 6)"
+
+# make complete 100bp bin files including no data bins
+# chr, start, stop, sites, C, CT, ratio
+perl /home/springer/nosha003/scripts/wgbs_bincounts.pl -i /home/springer/nosha003/database/B73v4/B73v4_100bp_bins.gff -I ${SCRATCH}/${SAMPLE1}_BSMAP_out.txt.100.CG.bed -o ${SCRATCH}/${NAME}_BSMAP_100bp.CG.bed
+perl /home/springer/nosha003/scripts/wgbs_bincounts.pl -i /home/springer/nosha003/database/B73v4/B73v4_100bp_bins.gff -I ${SCRATCH}/${SAMPLE1}_BSMAP_out.txt.100.CHG.bed -o ${SCRATCH}/${NAME}_BSMAP_100bp.CHG.bed
+perl /home/springer/nosha003/scripts/wgbs_bincounts.pl -i /home/springer/nosha003/database/B73v4/B73v4_100bp_bins.gff -I ${SCRATCH}/${SAMPLE1}_BSMAP_out.txt.100.CHH.bed -o ${SCRATCH}/${NAME}_BSMAP_100bp.CHH.bed
+
+#qsub -t 1-6 -v LIST=/home/springer/nosha003/wgbs_schmitz/wgbs_schmitz_id.txt /home/springer/nosha003/scripts/wgbs_bins.sh
+```
+
+## Combine methylation data per sample (CG, CHG, CHH) and Calculate coverage (with B73v4 sites)
+```{r eval=F}
+#6Nov2017
+#bins_sites_coverage.sh
+#use B73v4 sites data to calculate coverage 
+	
+#!/bin/bash
+#PBS -l walltime=08:00:00,nodes=1:ppn=6,mem=20gb
+#PBS -o /scratch.global/nosha003/e_o/bins_o
+#PBS -e /scratch.global/nosha003/e_o/bins_e
+#PBS -N bins
+#PBS -V
+#PBS -r n
+
+SAMPLE1="$(/bin/sed -n ${PBS_ARRAYID}p ${LIST} | cut -f 1)"
+SAMPLE2="$(/bin/sed -n ${PBS_ARRAYID}p ${LIST} | cut -f 2)"
+NAME="$(/bin/sed -n ${PBS_ARRAYID}p ${LIST} | cut -f 3)"
+UMGC="$(/bin/sed -n ${PBS_ARRAYID}p ${LIST} | cut -f 4)"
+SCRATCH="$(/bin/sed -n ${PBS_ARRAYID}p ${LIST} | cut -f 5)"
+HOME="$(/bin/sed -n ${PBS_ARRAYID}p ${LIST} | cut -f 6)"
+
+# combine methylation data per sample (CG, CHG, CHH)
+cd ${SCRATCH}
+paste ${NAME}_BSMAP_100bp.CG.bed ${NAME}_BSMAP_100bp.CHG.bed ${NAME}_BSMAP_100bp.CHH.bed | cut -f 1-7,11-14,18-21 > ${NAME}_100bp.txt 
+
+# use combined methylation data per sample and calculate coverage
+perl /home/springer/nosha003/scripts/wgbs_coverage.pl -i ${SCRATCH}/${NAME}_100bp.txt -I /home/springer/nosha003/methylation_B73v4/AGPv4_cg_sites_012017.bed -o ${HOME}/${NAME}_100bp_cov.txt
+
+#qsub -t 1-6 -v LIST=/home/springer/nosha003/wgbs_schmitz/wgbs_schmitz_id.txt /home/springer/nosha003/scripts/bins_sites_coverage.sh
+```
+
+--> combine all datasets (ratio and coverage)
+```{r eval=F}
+cd /home/springer/nosha003/wgbs_schmitz/bins
+cd /home/springer/nosha003/wgbs_schmitz/tiles_output
+
+paste B73_Root_100bp_cov.txt B73_V2_100bp_cov.txt PH207_Root_100bp_cov.txt PH207_V2_100bp_cov.txt BxP_Root_100bp_cov.txt BxP_V2_100bp_cov.txt | cut -f 1-4,8,9,13,14,18,22,26,27,31,32,36,40,44,45,49,50,54,58,62,63,67,68,72,76,80,81,85,86,90,94,98,99,103,104,108 | sed 1d - > bins_cov.txt
+
+echo $'chr\tstart\tend\tBv2_CGratio\tBv2_CGcov\tBv2_CHGratio\tBv2_CHGcov\tBv2_CHHratio\tBv2_CHHcov\tBroot_CGratio\tBroot_CGcov\tBroot_CHGratio\tBroot_CHGcov\tBroot_CHHratio\tBroot_CHHcov\tProot_CGratio\tProot_CGcov\tProot_CHGratio\tProot_CHGcov\tProot_CHHratio\tProot_CHHcov\tPv2_CGratio\tPv2_CGcov\tPv2_CHGratio\tPv2_CHGcov\tPv2_CHHratio\tPv2_CHHcov\tBxProot_CGratio\tBxProot_CGcov\tBxProot_CHGratio\tBxProot_CHGcov\tBxProot_CHHratio\tBxProot_CHHcov\tBxPv2_CGratio\tBxPv2_CGcov\tBxPv2_CHGratio\tBxPv2_CHGcov\tBxPv2_CHHratio\tBxPv2_CHHcov' | cat - bins_cov.txt > bins_cov_header.txt
+
+--> subset to chh coverage >= 2 in B and P
+awk '{if ($9 != "NA" && $9 >= 2 && $15 != "NA" && $15 >= 2 && $21 != "NA" && $21 >= 2 && $27 != "NA" && $27 >= 2) print $0}' bins_cov_header.txt > bins_cov_2.txt
+  
+  21063388 bins_cov_header.txt
+  #13106558 bins_cov_2.txt --> 13106558 / 21063388 = 0.6222436
+  12953451 new data --> 12953451 / 21063388 = 0.6149747
+```
+
+## IGV 
+```{r eval=F}
+awk '{print $1"\t"$2"\t"$3"\t""wgbs""\t"$4"\t"$6"\t"$8"\t"$10"\t"$12"\t"$14"\t"$16"\t"$18"\t"$20"\t"$22"\t"$24"\t"$26"\t"$28"\t"$30"\t"$32"\t"34"\t"36"\t38"}' bins_cov_header.txt > bins_cov_header.igv 
+```
+
+
+## Calling DMRs
+--> Notes from previous DMR calls (Qing's Paper)
+```{r eval=F}
+## From Qing's methods section: "CG and CHG DMRs were required to have a minimum of three symmetrical CG or CHG sites, at least 2 coverage, and a minimum methylation difference between two genotypes of 60%. CHH sequence context DMRs were required to have aminimum of six asymmetrical CHH sites, a minimum of 23 coverage, and one genotype with less than 5% methylation and the other genotype with greater 25% methylation"
+
+## Qing's paper (B73 v CML322)
+    #No. CG DMRs = 22,204
+    #No. CHG DMRs = 20,742
+    #No. CHH DMRs = 5,272
+
+# Using cutoffs in each context
+--> note: absolute value in awk = sqrt of the square 
+--> output files: chr, start, end, methylation_ratio_1, methylation_cov_1, methylation_ratio_2, methylation_cov_2
+--> 0.60 difference cutoff for CG and CHG_test
+--> 0.15 different cutoff for CHH... one of the samples has to be under 0.10 
+```
+
+--> DMR criteria (sites and coverage)
+```{r eval=F}
+# CG and CHG --> 3 sites and 2 coverage
+# CHH --> 6 sites and 2 coverage
+
+** new data (November 2017) ** 
+** new data (December 2017) ** 
+cd /home/springer/nosha003/wgbs_schmitz/tiles_output 
+
+perl /home/springer/nosha003/scripts/DMR_calling.pl --file1_in B73_V2_100bp_cov.txt --file2_in PH207_V2_100bp_cov.txt --DMR_out B73_PH207_V2_DMR.txt --sites1 3 --sites2 6 --coverage 2 --difference 60
+
+
+6 Nov 2017 
+
+```{r eval=F}
+#6Nov2017
+#DMR_calling_BP_V2.sh
+#call DMRs between two 100bp files with varying cutoff criteria
+	
+#!/bin/bash
+#PBS -l walltime=08:00:00,nodes=1:ppn=6,mem=20gb
+#PBS -o /scratch.global/nosha003/e_o/bins_o
+#PBS -e /scratch.global/nosha003/e_o/bins_e*
+#PBS -N bins
+#PBS -V
+#PBS -r n
+
+SAMPLE1="$(/bin/sed -n ${PBS_ARRAYID}p ${LIST} | cut -f 1)"
+SAMPLE2="$(/bin/sed -n ${PBS_ARRAYID}p ${LIST} | cut -f 2)"
+NAME="$(/bin/sed -n ${PBS_ARRAYID}p ${LIST} | cut -f 3)"
+UMGC="$(/bin/sed -n ${PBS_ARRAYID}p ${LIST} | cut -f 4)"
+SCRATCH="$(/bin/sed -n ${PBS_ARRAYID}p ${LIST} | cut -f 5)"
+HOME="$(/bin/sed -n ${PBS_ARRAYID}p ${LIST} | cut -f 6)"
+
+perl /home/springer/nosha003/scripts/DMR_calling.pl --file1_in ${HOME}/B73_V2_100bp_cov.txt --file2_in ${HOME}/PH207_V2_100bp_cov.txt --DMR_out ${SCRATCH}/B73_PH207_V2_DMR50.txt --cov_out ${SCRATCH}/B73_PH207_V2_cov_2.txt --sites1 3 --sites2 6 --coverage 2 --difference 50
+perl /home/springer/nosha003/scripts/DMR_calling.pl --file1_in ${HOME}/B73_V2_100bp_cov.txt --file2_in ${HOME}/PH207_V2_100bp_cov.txt --DMR_out ${SCRATCH}/B73_PH207_V2_DMR60.txt --cov_out ${SCRATCH}/B73_PH207_V2_cov_2.txt --sites1 3 --sites2 6 --coverage 2 --difference 60
+perl /home/springer/nosha003/scripts/DMR_calling.pl --file1_in ${HOME}/B73_V2_100bp_cov.txt --file2_in ${HOME}/PH207_V2_100bp_cov.txt --DMR_out ${SCRATCH}/B73_PH207_V2_DMR70.txt --cov_out ${SCRATCH}/B73_PH207_V2_cov_2.txt --sites1 3 --sites2 6 --coverage 2 --difference 70
+perl /home/springer/nosha003/scripts/DMR_calling.pl --file1_in ${HOME}/B73_V2_100bp_cov.txt --file2_in ${HOME}/PH207_V2_100bp_cov.txt --DMR_out ${SCRATCH}/B73_PH207_V2_DMR80.txt --cov_out ${SCRATCH}/B73_PH207_V2_cov_2.txt --sites1 3 --sites2 6 --coverage 2 --difference 80
+
+perl /home/springer/nosha003/scripts/DMR_calling.pl --file1_in ${HOME}/B73_V2_100bp_cov.txt --file2_in ${HOME}/PH207_V2_100bp_cov.txt --DMR_out ${SCRATCH}/B73_PH207_V2_DMR50_3.txt --cov_out ${SCRATCH}/B73_PH207_V2_cov_3.txt --sites1 3 --sites2 6 --coverage 3 --difference 50
+perl /home/springer/nosha003/scripts/DMR_calling.pl --file1_in ${HOME}/B73_V2_100bp_cov.txt --file2_in ${HOME}/PH207_V2_100bp_cov.txt --DMR_out ${SCRATCH}/B73_PH207_V2_DMR60_3.txt --cov_out ${SCRATCH}/B73_PH207_V2_cov_3.txt --sites1 3 --sites2 6 --coverage 3 --difference 60
+perl /home/springer/nosha003/scripts/DMR_calling.pl --file1_in ${HOME}/B73_V2_100bp_cov.txt --file2_in ${HOME}/PH207_V2_100bp_cov.txt --DMR_out ${SCRATCH}/B73_PH207_V2_DMR70_3.txt --cov_out ${SCRATCH}/B73_PH207_V2_cov_3.txt --sites1 3 --sites2 6 --coverage 3 --difference 70
+perl /home/springer/nosha003/scripts/DMR_calling.pl --file1_in ${HOME}/B73_V2_100bp_cov.txt --file2_in ${HOME}/PH207_V2_100bp_cov.txt --DMR_out ${SCRATCH}/B73_PH207_V2_DMR80_3.txt --cov_out ${SCRATCH}/B73_PH207_V2_cov_3.txt --sites1 3 --sites2 6 --coverage 3 --difference 80
+
+perl /home/springer/nosha003/scripts/DMR_calling.pl --file1_in ${HOME}/B73_V2_100bp_cov.txt --file2_in ${HOME}/PH207_V2_100bp_cov.txt --DMR_out ${SCRATCH}/B73_PH207_V2_DMR50_4.txt --cov_out ${SCRATCH}/B73_PH207_V2_cov_4.txt --sites1 3 --sites2 6 --coverage 4 --difference 50
+perl /home/springer/nosha003/scripts/DMR_calling.pl --file1_in ${HOME}/B73_V2_100bp_cov.txt --file2_in ${HOME}/PH207_V2_100bp_cov.txt --DMR_out ${SCRATCH}/B73_PH207_V2_DMR60_4.txt --cov_out ${SCRATCH}/B73_PH207_V2_cov_4.txt --sites1 3 --sites2 6 --coverage 4 --difference 60
+perl /home/springer/nosha003/scripts/DMR_calling.pl --file1_in ${HOME}/B73_V2_100bp_cov.txt --file2_in ${HOME}/PH207_V2_100bp_cov.txt --DMR_out ${SCRATCH}/B73_PH207_V2_DMR70_4.txt --cov_out ${SCRATCH}/B73_PH207_V2_cov_4.txt --sites1 3 --sites2 6 --coverage 4 --difference 70
+perl /home/springer/nosha003/scripts/DMR_calling.pl --file1_in ${HOME}/B73_V2_100bp_cov.txt --file2_in ${HOME}/PH207_V2_100bp_cov.txt --DMR_out ${SCRATCH}/B73_PH207_V2_DMR80_4.txt --cov_out ${SCRATCH}/B73_PH207_V2_cov_4.txt --sites1 3 --sites2 6 --coverage 4 --difference 80
+
+perl /home/springer/nosha003/scripts/DMR_calling.pl --file1_in ${HOME}/B73_V2_100bp_cov.txt --file2_in ${HOME}/PH207_V2_100bp_cov.txt --DMR_out ${SCRATCH}/B73_PH207_V2_DMR50_5.txt --cov_out ${SCRATCH}/B73_PH207_V2_cov_5.txt --sites1 3 --sites2 6 --coverage 5 --difference 50
+perl /home/springer/nosha003/scripts/DMR_calling.pl --file1_in ${HOME}/B73_V2_100bp_cov.txt --file2_in ${HOME}/PH207_V2_100bp_cov.txt --DMR_out ${SCRATCH}/B73_PH207_V2_DMR60_5.txt --cov_out ${SCRATCH}/B73_PH207_V2_cov_5.txt --sites1 3 --sites2 6 --coverage 5 --difference 60
+perl /home/springer/nosha003/scripts/DMR_calling.pl --file1_in ${HOME}/B73_V2_100bp_cov.txt --file2_in ${HOME}/PH207_V2_100bp_cov.txt --DMR_out ${SCRATCH}/B73_PH207_V2_DMR70_5.txt --cov_out ${SCRATCH}/B73_PH207_V2_cov_5.txt --sites1 3 --sites2 6 --coverage 5 --difference 70
+perl /home/springer/nosha003/scripts/DMR_calling.pl --file1_in ${HOME}/B73_V2_100bp_cov.txt --file2_in ${HOME}/PH207_V2_100bp_cov.txt --DMR_out ${SCRATCH}/B73_PH207_V2_DMR80_5.txt --cov_out ${SCRATCH}/B73_PH207_V2_cov_5.txt --sites1 3 --sites2 6 --coverage 5 --difference 80
+
+#qsub -t 1-1 -v LIST=/home/springer/nosha003/wgbs_schmitz/wgbs_schmitz_id.txt /home/springer/nosha003/scripts/DMR_calling_BP_V2.sh
+```
+
+- bins with enough coverage (BvP V2)
+cov2 = 1265252
+cov3 = 237462
+cov4 = 40144
+cov5 = 8911
+
+--> run DMR calls on B v P leaf (5 genotypes data) and B v P root (Schmitz data)
+```{r eval=F}
+#6Nov2017
+#DMR_calling_2.sh
+#call DMRs between two 100bp files
+	
+#!/bin/bash
+#PBS -l walltime=08:00:00,nodes=1:ppn=6,mem=20gb
+#PBS -o /scratch.global/nosha003/e_o/bins_o
+#PBS -e /scratch.global/nosha003/e_o/bins_e
+#PBS -N bins
+#PBS -V
+#PBS -r n
+
+# 5genos leaf data
+perl /home/springer/nosha003/scripts/DMR_calling.pl --file1_in /home/springer/nosha003/methylation_B73v4/B73_coverage.tab --file2_in /home/springer/nosha003/methylation_B73v4/PH207/PH207_coverage.tab --DMR_out /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR.txt --cov_out /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_cov.txt --sites1 3 --sites2 6 --coverage 2 --difference 60
+
+perl /home/springer/nosha003/scripts/DMR_calling.pl --file1_in /home/springer/nosha003/methylation_B73v4/B73_coverage.tab --file2_in /home/springer/nosha003/methylation_B73v4/PH207/PH207_coverage.tab --DMR_out /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR_diff40.txt --cov_out /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_cov_diff40.txt --sites1 3 --sites2 6 --coverage 2 --difference 40
+
+# Schmitz root data
+perl /home/springer/nosha003/scripts/DMR_calling.pl --file1_in /home/springer/nosha003/methylation_B73v4/B73_Root_100bp_cov.txt --file2_in /home/springer/nosha003/methylation_B73v4/PH207_Root_100bp_cov.txt --DMR_out /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_root_DMR.txt --cov_out /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_root_cov.txt --sites1 3 --sites2 6 --coverage 2 --difference 60
+
+perl /home/springer/nosha003/scripts/DMR_calling.pl --file1_in /home/springer/nosha003/methylation_B73v4/B73_Root_100bp_cov.txt --file2_in /home/springer/nosha003/methylation_B73v4/PH207_Root_100bp_cov.txt --DMR_out /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_root_DMR_diff50.txt --cov_out /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_root_cov_diff50.txt --sites1 3 --sites2 6 --coverage 2 --difference 50
+
+#qsub /home/springer/nosha003/scripts/DMR_calling_2.sh
+```
+
+
+--> DMR validation "validated" 
+    --> bins that have CHH cov >= 2 in both sets
+    --> DMR calls in BvP_leaf (5_genos) data -- diff 0.60, cov >= 2
+    --> DMR calls in BvP_V2 (schmitz) data -- varying criteria
+    --> overlap... what proportion of the BvP_V2 DMR calls are also found in the BvP_leaf DMR calls?
+    
+```{r eval=F}
+#6Nov2017
+#DMR_validation.sh
+#call DMRs between two 100bp files
+	
+#!/bin/bash
+#PBS -l walltime=08:00:00,nodes=1:ppn=1,mem=5gb
+#PBS -o /scratch.global/nosha003/e_o/bins_o
+#PBS -e /scratch.global/nosha003/e_o/bins_e
+#PBS -N bins
+#PBS -V
+#PBS -r n
+
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_50_2.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_cov.txt -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR50.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_leaf_50.txt
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_60_2.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_cov.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR60.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_leaf_60.txt
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_70_2.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_cov.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR70.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_leaf_70.txt
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_80_2.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_cov.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR80.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_leaf_80.txt
+
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_50_3.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_cov.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR50_3.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_leaf_50_3.txt
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_60_3.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_cov.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR60_3.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_leaf_60_3.txt
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_70_3.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_cov.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR70_3.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_leaf_70_3.txt
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_80_3.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_cov.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR80_3.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_leaf_80_3.txt
+
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_50_4.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_cov.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR50_4.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_leaf_50_4.txt
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_60_4.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_cov.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR60_4.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_leaf_60_4.txt
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_70_4.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_cov.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR70_4.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_leaf_70_4.txt
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_80_4.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_cov.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR80_4.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_leaf_80_4.txt
+
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_50_5.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_cov.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR50_5.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_leaf_50_5.txt
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_60_5.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_cov.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR60_5.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_leaf_60_5.txt
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_70_5.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_cov.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR70_5.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_leaf_70_5.txt
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_80_5.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_cov.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR80_5.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_leaf_80_5.txt
+
+#qsub /home/springer/nosha003/scripts/DMR_validation.sh
+```
+
+/Volumes/CBS/Groups/Lab-Springer/Jaclyn/Graduate_projects/schmitz_data/dmr_analysis.xlsx
+
+
+--> DMR validation "supported"
+```{r eval=F}
+# use 40-60% cutoff for "supported" category
+
+#20Nov2017
+#DMR_validation_supported.sh
+#call DMRs between two 100bp files
+	
+#!/bin/bash
+#PBS -l walltime=08:00:00,nodes=1:ppn=1,mem=5gb
+#PBS -o /scratch.global/nosha003/e_o/bins_o
+#PBS -e /scratch.global/nosha003/e_o/bins_e
+#PBS -N bins
+#PBS -V
+#PBS -r n
+
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_50_2.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_cov_diff40.txt -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR50.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR_diff40.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_leaf2_50.txt
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_60_2.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_cov_diff40.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR60.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR_diff40.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_leaf2_60.txt
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_70_2.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_cov_diff40.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR70.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR_diff40.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_leaf2_70.txt
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_80_2.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_cov_diff40.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR80.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR_diff40.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_leaf2_80.txt
+
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_50_3.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_cov_diff40.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR50_3.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR_diff40.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_leaf2_50_3.txt
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_60_3.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_cov_diff40.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR60_3.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR_diff40.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_leaf2_60_3.txt
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_70_3.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_cov_diff40.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR70_3.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR_diff40.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_leaf2_70_3.txt
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_80_3.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_cov_diff40.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR80_3.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR_diff40.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_leaf2_80_3.txt
+
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_50_4.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_cov_diff40.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR50_4.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR_diff40.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_leaf2_50_4.txt
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_60_4.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_cov_diff40.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR60_4.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR_diff40.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_leaf2_60_4.txt
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_70_4.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_cov_diff40.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR70_4.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR_diff40.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_leaf2_70_4.txt
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_80_4.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_cov_diff40.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR80_4.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR_diff40.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_leaf2_80_4.txt
+
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_50_5.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_cov_diff40.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR50_5.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR_diff40.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_leaf2_50_5.txt
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_60_5.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_cov_diff40.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR60_5.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR_diff40.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_leaf2_60_5.txt
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_70_5.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_cov_diff40.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR70_5.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR_diff40.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_leaf2_70_5.txt
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_80_5.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_cov_diff40.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR80_5.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR_diff40.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_leaf2_80_5.txt
+
+#qsub /home/springer/nosha003/scripts/DMR_validation_supported.sh
+``` 
+
+```{r eval=F}
+# Look at root data
+
+#20Nov2017
+#DMR_validation_root.sh
+#call DMRs between two 100bp files
+	
+#!/bin/bash
+#PBS -l walltime=08:00:00,nodes=1:ppn=1,mem=5gb
+#PBS -o /scratch.global/nosha003/e_o/bins_o
+#PBS -e /scratch.global/nosha003/e_o/bins_e
+#PBS -N bins
+#PBS -V
+#PBS -r n
+
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_50_2.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_root_cov.txt -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR50.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_root_DMR.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_root_50.txt
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_60_2.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_root_cov.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR60.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_root_DMR.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_root_60.txt
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_70_2.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_root_cov.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR70.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_root_DMR.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_root_70.txt
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_80_2.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_root_cov.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR80.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_root_DMR.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_root_80.txt
+
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_50_3.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_root_cov.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR50_3.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_root_DMR.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_root_50_3.txt
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_60_3.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_root_cov.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR60_3.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_root_DMR.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_root_60_3.txt
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_70_3.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_root_cov.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR70_3.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_root_DMR.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_root_70_3.txt
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_80_3.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_root_cov.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR80_3.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_root_DMR.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_root_80_3.txt
+
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_50_4.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_root_cov.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR50_4.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_root_DMR.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_root_50_4.txt
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_60_4.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_root_cov.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR60_4.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_root_DMR.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_root_60_4.txt
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_70_4.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_root_cov.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR70_4.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_root_DMR.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_root_70_4.txt
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_80_4.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_root_cov.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR80_4.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_root_DMR.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_root_80_4.txt
+
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_50_5.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_root_cov.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR50_5.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_root_DMR.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_root_50_5.txt
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_60_5.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_root_cov.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR60_5.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_root_DMR.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_root_60_5.txt
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_70_5.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_root_cov.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR70_5.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_root_DMR.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_root_70_5.txt
+perl /home/springer/nosha003/scripts/DMR_validation.pl -i /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_cov_80_5.txt -I /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_root_cov.txt  -t /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR80_5.txt -u /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_root_DMR.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_root_80_5.txt
+
+#qsub /home/springer/nosha003/scripts/DMR_validation_root.sh
+```
+Excel file: /Volumes/CBS/Groups/LAB-springer/Jaclyn/Graduate_projects/schmitz_data/dmr_analysis.xlsx
+
+** Only use the bins that were validated ?? **
+
+5 Dec 2017
+** correced data 17 Dec 2017 **
+--> scatterplot of BvP 5geno v BvP V2
+    --> where are the bins that are not validated... are they close to the cutoff?
+    
+```{r eval=F}
+# scatterplot (hexagonal plot of density)
+
+# setwd("/scratch.global/nosha003/wgbs_schmitz/analysis/tiles/")
+# BP_V2 <- read.delim("B73_PH207_V2_DMR60.txt", header=F, sep="\t")
+# setwd("/home/springer/nosha003/wgbs_schmitz/tiles_output")
+# BP_leaf <- read.delim("B73_PH207_leaf_DMR.txt", header=F, sep="\t")
+# BP_root <- read.delim("B73_PH207_root_DMR.txt", header=F, sep="\t")
+# 
+# BP_leaf_V2 <- merge(BP_leaf, BP_V2, by.x=c("V1", "V2","V3"), by.y=c("V1", "V2","V3"))
+# 
+# library(hexbin)
+# png("BvP_DMR_hexbin.png")
+# hexbinplot((BP_leaf_V2$V5.x-BP_leaf_V2$V4.x) ~ (BP_leaf_V2$V5.y-BP_leaf_V2$V4.y), xlab="BvP_V2", ylab="BvP_Leaf")
+# dev.off()
+
+** wrong... used all contexts and only DMRs in both V2 and leaf... instead use just cg, chg context and DMRs in V2 with all bins with >= 2 cov in leaf **
+
+setwd("/scratch.global/nosha003/wgbs_schmitz/analysis/tiles/")
+BP_V2 <- read.delim("B73_PH207_V2_DMR60.txt", header=F, sep="\t")
+setwd("/home/springer/nosha003/methylation_B73v4")
+B_leaf <- read.delim("B73_2_chhcov2.txt", header=T, sep="\t")
+setwd("/home/springer/nosha003/methylation_B73v4/PH207")
+P_leaf <- read.delim("PH207_coverage_chhcov2.txt", header=T, sep=" ")
+
+BP_leaf <- merge(B_leaf, P_leaf, by.x=c("chr", "start","end"), by.y=c("chr", "X1","end"))
+
+BP_V2_cg <- subset(BP_V2, BP_V2$V6 == "cg_dmr")
+BP_V2_chg <- subset(BP_V2, BP_V2$V6 == "chg_dmr")
+
+BP_leaf_V2_cg <- merge(BP_leaf, BP_V2_cg, by.x=c("chr", "start","end"), by.y=c("V1", "V2","V3"))
+BP_leaf_V2_chg <- merge(BP_leaf, BP_V2_chg, by.x=c("chr", "start","end"), by.y=c("V1", "V2","V3"))
+
+library(hexbin)
+png("BvP_DMR_hexbin_cg.png")
+hexbinplot((BP_leaf_V2_cg$CG_ratio.y-BP_leaf_V2_cg$CG_ratio.x) ~ (BP_leaf_V2_cg$V5-BP_leaf_V2_cg$V4), xlab="BvP_V2_CG", ylab="BvP_Leaf_CG")
+dev.off()
+
+library(hexbin)
+png("BvP_DMR_hexbin_chg.png")
+hexbinplot((BP_leaf_V2_chg$CHG_ratio.y-BP_leaf_V2_chg$CHG_ratio.x) ~ (BP_leaf_V2_chg$V5-BP_leaf_V2_chg$V4), xlab="BvP_V2_CHG", ylab="BvP_Leaf_CHG")
+dev.off()
+
+
+______________________________________
+# try with Root data
+
+setwd("/home/springer/nosha003/wgbs_schmitz/tiles_output/")
+BP_Root <- read.delim("B73_PH207_root_DMR.txt", header=F, sep="\t")
+setwd("/home/springer/nosha003/methylation_B73v4")
+B_leaf <- read.delim("B73_2_chhcov2.txt", header=T, sep="\t")
+setwd("/home/springer/nosha003/methylation_B73v4/PH207")
+P_leaf <- read.delim("PH207_coverage_chhcov2.txt", header=T, sep=" ")
+
+BP_leaf <- merge(B_leaf, P_leaf, by.x=c("chr", "start","end"), by.y=c("chr", "X1","end"))
+
+BP_Root_cg <- subset(BP_Root, BP_Root$V6 == "cg_dmr")
+BP_Root_chg <- subset(BP_Root, BP_Root$V6 == "chg_dmr")
+
+BP_leaf_Root_cg <- merge(BP_leaf, BP_Root_cg, by.x=c("chr", "start","end"), by.y=c("V1", "V2","V3"))
+BP_leaf_Root_chg <- merge(BP_leaf, BP_Root_chg, by.x=c("chr", "start","end"), by.y=c("V1", "V2","V3"))
+
+library(hexbin)
+png("BvP_Leaf_Root_DMR_hexbin_cg.png")
+hexbinplot((BP_leaf_Root_cg$CG_ratio.y-BP_leaf_Root_cg$CG_ratio.x) ~ (BP_leaf_Root_cg$V5-BP_leaf_Root_cg$V4), xlab="BvP_Root_CG", ylab="BvP_Leaf_CG")
+dev.off()
+
+
+```
+
+7 Dec 2017
+--> Take a step back and do a hexplot of BxB and PxP (6 plots total)
+--> PCA plot of all samples... look at clustering
+
+```{r eval=F}
+# hexplot of BxB and PxP for V2, Root, Leaf
+
+qsub -I -l walltime=3:00:00,nodes=1:ppn=1,mem=20G
+
+setwd("/home/springer/nosha003/methylation_B73v4")
+B_leaf <- read.delim("B73_2_chhcov2_chr.txt", header=T, sep="\t")
+setwd("/home/springer/nosha003/methylation_B73v4/PH207")
+P_leaf <- read.delim("PH207_coverage_chhcov2_chr.txt", header=T, sep=" ")
+setwd("/home/springer/nosha003/wgbs_schmitz/tiles_output/")
+B_V2 <- read.delim("B73_V2_100bp_cov.txt", header=T, sep="\t")
+B_Root <- read.delim("B73_Root_100bp_cov.txt", header=T, sep="\t")
+P_V2 <- read.delim("PH207_V2_100bp_cov.txt", header=T, sep="\t")
+P_Root <- read.delim("PH207_Root_100bp_cov.txt", header=T, sep="\t")
+
+# B_V2_leaf <- merge(B_V2, B_leaf, by.x=c("chr", "start","end"), by.y=c("chr", "start","end"))
+# B_V2_Root <- merge(B_V2, B_Root, by.x=c("chr", "start","end"), by.y=c("chr", "start","end"))
+# B_Root_leaf <- merge(B_Root, B_leaf, by.x=c("chr", "start","end"), by.y=c("chr", "start","end"))
+# P_V2_leaf <- merge(P_V2, P_leaf, by.x=c("chr", "start","end"), by.y=c("chr", "start","end"))
+# P_V2_Root <- merge(P_V2, P_Root, by.x=c("chr", "start","end"), by.y=c("chr", "start","end"))
+# P_Root_leaf <- merge(P_Root, P_leaf, by.x=c("chr", "start","end"), by.y=c("chr", "start","end"))
+
+library(hexbin)
+
+hexbinplot((B_leaf$CG_ratio) ~ (B_V2$CG_ratio), xlab="B_V2_CG", ylab="B_leaf_CG")
+hexbinplot((B_Root$CG_ratio) ~ (B_V2$CG_ratio), xlab="B_V2_CG", ylab="B_Root_CG")
+hexbinplot((B_leaf$CG_ratio) ~ (B_Root$CG_ratio), xlab="B_Root_CG", ylab="B_leaf_CG")
+hexbinplot((P_leaf$CG_ratio) ~ (P_V2$CG_ratio), xlab="P_V2_CG", ylab="P_leaf_CG")
+hexbinplot((P_Root$CG_ratio) ~ (P_V2$CG_ratio), xlab="P_V2_CG", ylab="P_Root_CG")
+hexbinplot((P_leaf$CG_ratio) ~ (P_Root$CG_ratio), xlab="P_Root_CG", ylab="P_leaf_CG")
+
+B_V2_leaf <- merge(B_V2, B_leaf, by.x=c("chr", "start","end"), by.y=c("chr", "start","end"))
+plot(B_V2_leaf$CG_ratio.x, B_V2_leaf$CG_ratio.y)
+hexbinplot((B_V2_leaf$CG_ratio.y) ~ (B_V2_leaf$CG_ratio.x), xlab="B_V2_CG", ylab="B_leaf_CG", colorcut = seq(0,1,length.out=10), colramp = function(n) rev(rainbow(10)))
+
+library(ggplot2)
+ggplot(B_V2_leaf, aes(x = CG_ratio.x, y= CG_ratio.y)) +
+  stat_binhex() +
+  scale_fill_gradient(breaks = c(0,10))
+
+
+# pca plot --> subset for chr1 on unix
+## code keeps killing... transfer files to computer and run from there (using head of file --> just a few lines as a proxy for data)
+
+library(ggfortify)
+library(ggplot2)
+library(dplyr)
+
+# setwd("/home/springer/nosha003/methylation_B73v4")
+# B_leaf <- read.delim("B73_2_chhcov2_chr1.txt", header=F, sep="\t")
+# setwd("/home/springer/nosha003/methylation_B73v4/PH207")
+# P_leaf <- read.delim("PH207_coverage_chhcov2_chr1.txt", header=F, sep=" ")
+# setwd("/home/springer/nosha003/wgbs_schmitz/tiles_output/")
+# B_V2 <- read.delim("B73_V2_100bp_cov_chr1.txt", header=T, sep=" ")
+# B_Root <- read.delim("B73_Root_100bp_cov_chr1.txt", header=T, sep=" ")
+# P_V2 <- read.delim("PH207_V2_100bp_cov_chr1.txt", header=T, sep=" ")
+# P_Root <- read.delim("PH207_Root_100bp_cov_chr1.txt", header=T, sep=" ")
+
+setwd("/Volumes/CBS/Groups/LAB-springer/Jaclyn/Graduate_projects/schmitz_data/wgbs/tiles")
+B_leaf <- read.delim("B73_2_chhcov2_chr1.txt", header=F, sep="\t")
+P_leaf <- read.delim("PH207_coverage_chhcov2_chr1.txt", header=F, sep=" ")
+B_V2 <- read.delim("B73_V2_100bp_cov_chr1_head.txt", header=T, sep=" ")
+B_Root <- read.delim("B73_Root_100bp_cov_chr1_head.txt", header=T, sep=" ")
+P_V2 <- read.delim("PH207_V2_100bp_cov_chr1_head.txt", header=T, sep=" ")
+P_Root <- read.delim("PH207_Root_100bp_cov_chr1_head.txt", header=T, sep=" ")
+
+Bleaf <- na.omit(B_leaf)
+Pleaf <- na.omit(P_leaf)
+BV2 <- na.omit(B_V2)
+BRoot <- na.omit(B_Root)
+PV2 <- na.omit(P_V2)
+PRoot <- na.omit(P_Root)
+
+B_schmitz <- inner_join(BV2[,1:3], BRoot[,1:3], by=c("X1", "start"))
+P_schmitz <- inner_join(PV2[,1:3], PRoot[,1:3], by=c("X1", "start"))
+BP_5genos <- inner_join(Bleaf[,1:3], Pleaf[,1:3], by=c("V1", "V2"))
+
+colnames(BP_5genos) <- c("X1", "start", "end.x", "end.y")
+BP_schmitz <- inner_join(B_schmitz[,1:3], BP_5genos[,1:3], by=c("X1", "start"))
+bins <- inner_join(BP_schmitz, P_schmitz, by=c("X1", "start"))
+
+B_V2_bins <- inner_join(B_V2, bins, by=c("X1", "start"))
+P_V2_bins <- inner_join(P_V2, bins, by=c("X1", "start"))
+B_Root_bins <- inner_join(B_Root, bins, by=c("X1", "start"))
+P_Root_bins <- inner_join(P_Root, bins, by=c("X1", "start"))
+colnames(B_leaf) <- c("X1", "start", "V3", "V4", "V5", "V6","V7","V8","V9","V10","V11","V12","V13","V14","V15","V16","V17","V18")
+colnames(P_leaf) <- c("X1", "start", "V3", "V4", "V5", "V6","V7","V8","V9","V10","V11","V12","V13","V14","V15","V16","V17","V18")
+B_leaf_bins <- inner_join(B_leaf, bins, by=c("X1", "start"))
+P_leaf_bins <- inner_join(P_leaf, bins, by=c("X1", "start"))
+
+B_V2_bins["sample"] <- "B_V2"
+B_Root_bins["sample"] <- "B_Root"
+P_V2_bins["sample"] <- "P_V2"
+P_Root_bins["sample"] <- "P_Root"
+B_leaf_bins["sample"] <- "B_leaf"
+P_leaf_bins["sample"] <- "P_leaf"
+
+colnames(B_V2_bins) <- c("chr", "start", "end", "CG_ratio", "CG_C", "CG_CT", "CG_sites", "CG_cov", "CHG_ratio", "CHG_C", "CHG_CT", "CHG_sites", "CHG_cov", "CHH_ratio", "CHH_C", "CHH_CT", "CHH_sites", "CHH_cov", "start.x.x", "start.x.y", "start.y", "X1", "sample")
+colnames(B_Root_bins) <- c("chr", "start", "end", "CG_ratio", "CG_C", "CG_CT", "CG_sites", "CG_cov", "CHG_ratio", "CHG_C", "CHG_CT", "CHG_sites", "CHG_cov", "CHH_ratio", "CHH_C", "CHH_CT", "CHH_sites", "CHH_cov", "start.x.x", "start.x.y", "start.y", "X1", "sample")
+colnames(P_V2_bins) <- c("chr", "start", "end", "CG_ratio", "CG_C", "CG_CT", "CG_sites", "CG_cov", "CHG_ratio", "CHG_C", "CHG_CT", "CHG_sites", "CHG_cov", "CHH_ratio", "CHH_C", "CHH_CT", "CHH_sites", "CHH_cov", "start.x.x", "start.x.y", "start.y", "X1", "sample")
+colnames(P_Root_bins) <- c("chr", "start", "end", "CG_ratio", "CG_C", "CG_CT", "CG_sites", "CG_cov", "CHG_ratio", "CHG_C", "CHG_CT", "CHG_sites", "CHG_cov", "CHH_ratio", "CHH_C", "CHH_CT", "CHH_sites", "CHH_cov", "start.x.x", "start.x.y", "start.y", "X1", "sample")
+colnames(B_leaf_bins) <- c("chr", "start", "end", "CG_ratio", "CG_C", "CG_CT", "CG_sites", "CG_cov", "CHG_ratio", "CHG_C", "CHG_CT", "CHG_sites", "CHG_cov", "CHH_ratio", "CHH_C", "CHH_CT", "CHH_sites", "CHH_cov", "start.x.x", "start.x.y", "start.y", "X1", "sample")
+colnames(P_leaf_bins) <- c("chr", "start", "end", "CG_ratio", "CG_C", "CG_CT", "CG_sites", "CG_cov", "CHG_ratio", "CHG_C", "CHG_CT", "CHG_sites", "CHG_cov", "CHH_ratio", "CHH_C", "CHH_CT", "CHH_sites", "CHH_cov", "start.x.x", "start.x.y", "start.y", "X1", "sample")
+
+df <- rbind(B_V2_bins, B_Root_bins, P_V2_bins, P_Root_bins, B_leaf_bins, P_leaf_bins)
+write.table(df, "wgbs_compiled_chr1.txt", quote=F, sep="\t")
+
+df2 <- cbind(B_V2_bins[,4], B_Root_bins[,4], P_V2_bins[,4], P_Root_bins[,4], B_leaf_bins[,4], P_leaf_bins[,4])
+colnames(df2) <- c("B_V2_CG", "B_Root_CG", "P_V2_CG", "P_Root_CG", "B_leaf_CG", "P_leaf_CG")
+write.table(df2, "wgbs_compiled_chr1_CG.txt", quote=F, sep="\t")
+
+____________________
+
+# http://www.gastonsanchez.com/visually-enforced/how-to/2012/06/17/PCA-in-R/
+
+library(ggfortify)
+library(ggplot2)
+library(dplyr)
+
+setwd("/home/springer/nosha003/wgbs_schmitz/tiles_output/")
+df <- read.delim("wgbs_compiled_chr1.txt", header=T, sep="\t")
+df2 <- read.delim("wgbs_compiled_chr1_CG.txt", header=T, sep="\t")
+
+df_CG <- df[,c(4,24)]
+autoplot(prcomp(df$CG_ratio), data = df, colour = 'sample')
+
+pca1 = prcomp(df2, scale. = TRUE)
+pca1$sdev
+head(pca1$rotation)
+head(pca1$x)
+# scores = as.data.frame(pca1$x)
+# ggplot(data = scores, aes(x = PC1, y = PC2, label = rownames(scores))) +
+#   geom_hline(yintercept = 0, colour = "gray65") +
+#   geom_vline(xintercept = 0, colour = "gray65") +
+#   geom_text(colour = "tomato", alpha = 0.8, size = 4) +
+#   ggtitle("PCA plot of WGBS datasets")
+
+# function to create a circle
+circle <- function(center = c(0, 0), npoints = 100) {
+    r = 1
+    tt = seq(0, 2 * pi, length = npoints)
+    xx = center[1] + r * cos(tt)
+    yy = center[1] + r * sin(tt)
+    return(data.frame(x = xx, y = yy))
+}
+corcir = circle(c(0, 0), npoints = 100)
+
+# create data frame with correlations between variables and PCs
+correlations = as.data.frame(cor(df2, pca1$x))
+
+# data frame with arrows coordinates
+arrows = data.frame(x1 = c(0, 0, 0, 0, 0, 0), y1 = c(0, 0, 0, 0, 0, 0), x2 = correlations$PC1, y2 = correlations$PC2)
+
+# geom_path will do open circles
+ggplot() + geom_path(data = corcir, aes(x = x, y = y)) + 
+    geom_segment(data = arrows, aes(x = x1, y = y1, xend = x2, yend = y2)) + 
+    geom_text(data = correlations, aes(x = PC1, y = PC2, label = rownames(correlations))) + 
+    geom_hline(yintercept = 0) + geom_vline(xintercept = 0) + 
+    xlim(-1.1, 1.1) + ylim(-1.1, 1.1) + labs(x = "pc1 aixs", y = "pc2 axis") + ggtitle("Circle of correlations")
+
+# plot
+#png("pca_wgbs.png")
+plot(x=correlations$PC1, y=correlations$PC2, col=as.factor(rownames(correlations)))
+legend("bottomright", legend = c(rownames(correlations)), pch=15, col = as.factor(rownames(correlations)))
+#dev.off()
+
+```
+
+--> DMR list overlap with TEs
+bedtools closest -a B73_PH207_V2_DMR_sort.txt -b /home/springer/nosha003/database/B73v4/te/B73v4_structural_filtered_newTIRID_detectMITE_noSINEdup.Feb92017.noDepreciatedSolos_sort_noctg.gff3 -d > B73_PH207_V2_DMR_te2.txt
+grep -v 'helitron' B73_PH207_V2_DMR_te.txt | grep 'cg_dmr' | awk '{if ($16 < 2000) print $0}' | wc -l
+    104053
+grep 'cg_dmr' B73_PH207_V2_DMR.txt | wc -l
+    228676
+104053/228676 = 0.4550237 of DMRs are within 1kb of a TE
+
+
+28 Dec 2017
+### Look at validation with Density Plot
+--> For each of the bins identified as a DMR in BvP V2 (>0.60 difference, 5x coverage)... plot BvP Root and plot BvP 5genos difference values
+    - different take on HexPlot
+
+```{r eval=F}
+#qsub -I -l walltime=3:00:00,nodes=1:ppn=1,mem=20G
+
+library(ggfortify)
+library(ggplot2)
+library(dplyr)
+
+setwd("/home/springer/nosha003/methylation_B73v4")
+B_leaf <- read.delim("B73_2_chhcov2_chr.txt", header=T, sep="\t")
+setwd("/home/springer/nosha003/methylation_B73v4/PH207")
+P_leaf <- read.delim("PH207_coverage_chhcov2_chr.txt", header=T, sep=" ")
+setwd("/home/springer/nosha003/wgbs_schmitz/tiles_output/")
+BP_V2 <- read.delim("B73_PH207_V2_DMR60_5.txt", header=F, sep="\t")
+B_Root <- read.delim("B73_Root_100bp_cov.txt", header=T, sep="\t")
+P_Root <- read.delim("PH207_Root_100bp_cov.txt", header=T, sep="\t")
+
+colnames(BP_V2) <- c("chr", "start", "end", "B", "P", "dmr")
+BP_V2_CG <- subset(BP_V2, BP_V2$dmr == "cg_dmr")
+BP_V2_CHG <- subset(BP_V2, BP_V2$dmr == "chg_dmr")
+
+BP_leaf <- inner_join(B_leaf, P_leaf, by=c("chr", "end"))
+BP_Root <- inner_join(B_Root, P_Root, by=c("chr", "end"))
+
+BP_V2_leaf_CG <- inner_join(BP_V2_CG, BP_leaf, by=c("chr", "end"))
+BP_V2_Root_CG <- inner_join(BP_V2_CG, BP_Root, by=c("chr", "end"))
+
+BP_V2_leaf_CHG <- inner_join(BP_V2_CHG, BP_leaf, by=c("chr", "end"))
+BP_V2_Root_CHG <- inner_join(BP_V2_CHG, BP_Root, by=c("chr", "end"))
+
+BP_V2_leaf_CG_noNA <- na.omit(BP_V2_leaf_CG)
+BP_V2_leaf_CHG_noNA <- na.omit(BP_V2_leaf_CHG)
+BP_V2_Root_CG_noNA <- na.omit(BP_V2_Root_CG)
+BP_V2_Root_CHG_noNA <- na.omit(BP_V2_Root_CHG)
+
+png("BP_V2_leaf.png")
+plot(density(abs(BP_V2_leaf_CG_noNA$CG_ratio.x - BP_V2_leaf_CG_noNA$CG_ratio.y)))
+lines(density(abs(BP_V2_leaf_CHG_noNA$CHG_ratio.x - BP_V2_leaf_CHG_noNA$CHG_ratio.y)))
+dev.off()
+
+png("BP_V2_Root.png")
+plot(density(abs(BP_V2_Root_CG_noNA$CG_ratio.x - BP_V2_Root_CG_noNA$CG_ratio.y)))
+lines(density(abs(BP_V2_Root_CHG_noNA$CHG_ratio.x - BP_V2_Root_CHG_noNA$CHG_ratio.y)))
+dev.off()
+
+```
+
+
+### Venn diagram - Tissue variation
+```{r eval=F}
+## Venn Diagram
+
+# make DMR calls based on CG/CHG > 0.60 difference and 5x coverage
+cd /home/springer/nosha003/wgbs_schmitz/tiles_output
+perl /home/springer/nosha003/scripts/DMR_calling.pl --file1_in B73_V2_100bp_cov.txt --file2_in PH207_V2_100bp_cov.txt  --DMR_out B73_PH207_V2_DMR60_5.txt --cov_out B73_PH207_V2_cov_5.txt --sites1 3 --sites2 6 --coverage 5 --difference 60
+
+perl /home/springer/nosha003/scripts/DMR_calling.pl --file1_in B73_Root_100bp_cov.txt --file2_in PH207_Root_100bp_cov.txt  --DMR_out B73_PH207_Root_DMR60_5.txt --cov_out B73_PH207_Root_cov_5.txt --sites1 3 --sites2 6 --coverage 5 --difference 60
+
+perl /home/springer/nosha003/scripts/DMR_calling.pl --file1_in /home/springer/nosha003/methylation_B73v4/B73_2_chhcov2_chr.txt --file2_in /home/springer/nosha003/methylation_B73v4/PH207/PH207_coverage_chhcov2_chr.txt --DMR_out B73_PH207_5genos_DMR60_5.txt --cov_out B73_PH207_5genos_cov_5.txt --sites1 3 --sites2 6 --coverage 5 --difference 60
+
+perl /home/springer/nosha003/scripts/DMR_calling.pl --file1_in B73_V2_100bp_cov.txt --file2_in B73_Root_100bp_cov.txt  --DMR_out B73_V2_Root_DMR60_5.txt --cov_out B73_V2_Root_cov_5.txt --sites1 3 --sites2 6 --coverage 5 --difference 60
+
+perl /home/springer/nosha003/scripts/DMR_calling.pl --file1_in PH207_V2_100bp_cov.txt --file2_in PH207_Root_100bp_cov.txt  --DMR_out PH207_V2_Root_DMR60_5.txt --cov_out PH207_V2_Root_cov_5.txt --sites1 3 --sites2 6 --coverage 5 --difference 60
+
+#qsub -I -l walltime=3:00:00,nodes=1:ppn=1,mem=20G
+#module load R/3.3.1
+#R
+
+library(VennDiagram)
+library(dplyr)
+library(plyr)
+
+setwd("/home/springer/nosha003/wgbs_schmitz/tiles_output/")
+#BP_V2 <- read.delim("B73_PH207_V2_DMR60_5.txt", header=F, sep="\t")
+#BP_Root <- read.delim("B73_PH207_Root_DMR60_5.txt", header=F, sep="\t")
+BP_V2 <- read.delim("B73_PH207_V2_DMR.txt", header=F, sep="\t")
+BP_Root <- read.delim("B73_PH207_Root_DMR.txt", header=F, sep="\t")
+BP_5genos <- read.delim("B73_PH207_5genos_DMR60_5.txt", header=F, sep="\t")
+B_tissue <- read.delim("B73_V2_Root_DMR60_5.txt", header=F, sep="\t")
+P_tissue <- read.delim("PH207_V2_Root_DMR60_5.txt", header=F, sep="\t")
+
+BP_V2_CG <- subset(BP_V2, BP_V2$V6 == "cg_dmr")
+BP_V2_CHG <- subset(BP_V2, BP_V2$V6 == "chg_dmr")
+BP_Root_CG <- subset(BP_Root, BP_Root$V6 == "cg_dmr")
+BP_Root_CHG <- subset(BP_Root, BP_Root$V6 == "chg_dmr")
+BP_leaf_CG <- subset(BP_5genos, BP_5genos$V6 == "cg_dmr")
+BP_leaf_CHG <- subset(BP_5genos, BP_5genos$V6 == "chg_dmr")
+B_tissue_CG <- subset(B_tissue, B_tissue$V6 == "cg_dmr")
+B_tissue_CHG <- subset(B_tissue, B_tissue$V6 == "chg_dmr")
+P_tissue_CG <- subset(P_tissue, P_tissue$V6 == "cg_dmr")
+P_tissue_CHG <- subset(P_tissue, P_tissue$V6 == "chg_dmr")
+
+BPtissue_CG <- rbind(B_tissue_CG, P_tissue_CG)
+BPtissue_CG_overlap <- subset(BPtissue_CG, duplicated(BPtissue_CG[,1:3]))
+BPtissue_CHG <- rbind(B_tissue_CHG, P_tissue_CHG)
+BPtissue_CHG_overlap <- subset(BPtissue_CHG, duplicated(BPtissue_CHG[,1:3]))
+
+BP_3way_CG <- rbind(BP_V2_CG, BP_Root_CG, BP_leaf_CG)
+overlap_CG <- ddply(BP_3way_CG,.(V1,V2),'nrow')
+overlap_CG_all <- subset(overlap_CG, overlap_CG$nrow == 3)
+BP_3way_CHG <- rbind(BP_V2_CHG, BP_Root_CHG, BP_leaf_CHG)
+overlap_CHG <- ddply(BP_3way_CHG,.(V1,V2),'nrow')
+overlap_CHG_all <- subset(overlap_CHG, overlap_CHG$nrow == 3)
+
+BP_V2_Root_CG <- rbind(BP_V2_CG, BP_Root_CG)
+BP_V2_Root_CG_overlap <- subset(BP_V2_Root_CG, duplicated(BP_V2_Root_CG[,1:3]))
+BP_V2_Root_CHG <- rbind(BP_V2_CHG, BP_Root_CHG)
+BP_V2_Root_CHG_overlap <- subset(BP_V2_Root_CHG, duplicated(BP_V2_Root_CHG[,1:3]))
+
+BP_V2_leaf_CG <- rbind(BP_V2_CG, BP_leaf_CG)
+BP_V2_leaf_CG_overlap <- subset(BP_V2_leaf_CG, duplicated(BP_V2_leaf_CG[,1:3]))
+BP_V2_leaf_CHG <- rbind(BP_V2_CHG, BP_leaf_CHG)
+BP_V2_leaf_CHG_overlap <- subset(BP_V2_leaf_CHG, duplicated(BP_V2_leaf_CHG[,1:3]))
+
+BP_leaf_Root_CG <- rbind(BP_leaf_CG, BP_Root_CG)
+BP_leaf_Root_CG_overlap <- subset(BP_leaf_Root_CG, duplicated(BP_leaf_Root_CG[,1:3]))
+BP_leaf_Root_CHG <- rbind(BP_leaf_CHG, BP_Root_CHG)
+BP_leaf_Root_CHG_overlap <- subset(BP_leaf_Root_CHG, duplicated(BP_leaf_Root_CHG[,1:3]))
+
+# Btissue v Ptissue
+grid.newpage()
+p.1 <- draw.pairwise.venn(nrow(B_tissue_CG), nrow(P_tissue_CG), nrow(BPtissue_CG_overlap), category = c("Btissue_cg","Ptissue_cg"), fill=c("light blue", "light green"), scaled=TRUE)
+grid.newpage()
+p.2 <- draw.pairwise.venn(nrow(B_tissue_CHG), nrow(P_tissue_CHG), nrow(BPtissue_CHG_overlap), category = c("Btissue_chg","Ptissue_chg"), fill=c("light blue", "light green"), scaled=TRUE)
+
+# BP_root v BP_V2 v BP_leaf
+grid.newpage()
+p.3 <- draw.triple.venn(nrow(BP_V2_CG), nrow(BP_Root_CG), nrow(BP_leaf_CG), nrow(BP_V2_Root_CG_overlap), nrow(BP_leaf_Root_CG_overlap), nrow(BP_V2_leaf_CG_overlap), nrow(overlap_CG_all), category = c("BP_V2_CG","BP_Root_CG", "BP_5genos_CG"), fill=c("light blue", "light green", "blueviolet"), scaled=TRUE)
+grid.newpage()
+p.4 <- draw.triple.venn(nrow(BP_V2_CHG), nrow(BP_Root_CHG), nrow(BP_leaf_CHG), nrow(BP_V2_Root_CHG_overlap), nrow(BP_leaf_Root_CHG_overlap), nrow(BP_V2_leaf_CHG_overlap), nrow(overlap_CHG_all), category = c("BP_V2_CHG","BP_Root_CHG", "BP_5genos_CHG"), fill=c("light blue", "light green", "blueviolet"), scaled=TRUE)
+
+
+```
+
+```{r}
+# Table
+# tissue_specific <- matrix(c((1253-46), (676-46), 46, (8035-238), (7231-238), 238),ncol=3,byrow=TRUE)
+tissue_specific <- matrix(c((1253-46), (676-46), 46, (8035-238), (7231-238), 238),ncol=3,byrow=TRUE)
+colnames(tissue_specific) <- c("Ptissue","Btissue","overlap")
+rownames(tissue_specific) <- c("CG","CHG")
+tissue_specific <- as.table(tissue_specific)
+tissue_specific
+
+# genotype <- matrix(c((59492), (22081), (1729), (101527), (493), (1269), (4663), 47912, 23410, 2728, 40888, 450, 972, 2561),ncol=7,byrow=TRUE)
+genotype <- matrix(c((73643), (56760), (1584), (155561), (599), (294), (5677)),ncol=7,byrow=TRUE)
+colnames(genotype) <- c("BP_V2", "BP_Root", "BP_5genos", "V2_Root", "Root_5genos", "5genos_V2", "all")
+#rownames(genotype) <- c("CG", "CHG")
+rownames(genotype) <- c("CG")
+genotype <- as.table(genotype)
+genotype
+
+# genotype2 <- matrix(c((59492+1269), (22081+493), (101527+4663), (47912+972), (23410+450), (40888+2561)),ncol=3,byrow=TRUE)
+genotype2 <- matrix(c((73643+294), (56760+599), (155561+5677)),ncol=3,byrow=TRUE)
+colnames(genotype2) <- c("BP_V2", "BP_Root", "overlap")
+# rownames(genotype2) <- c("CG", "CHG")
+rownames(genotype2) <- c("CG")
+genotype2 <- as.table(genotype2)
+genotype2
+
+```
+
+### Turn Venn in Stacked Barplot
+```{r}
+# tissue_genotype <- matrix(c(46, 46, 106190, 106190, 676, 1253, 22574, 60761),ncol=4,byrow=TRUE)
+tissue_genotype <- matrix(c(46, 46, 161238, 161238, 676, 1253, 57359, 73937),ncol=4,byrow=TRUE)
+colnames(tissue_genotype) <- c("Root_vs_Shoot - B73", "Root_vs_Shoot - PH207", "B73_vs_PH207 - Root", "B73_vs_PH207 - Shoot")
+rownames(tissue_genotype) <- c("shared", "uniq")
+tissue_genotype <- as.table(tissue_genotype)
+tissue_genotype
+
+```
+
+### Tissue specific -- by chance?
+```{r eval=F}
+# expected = prop x * prop y
+## prop root v shoot B * prop root v shoot P = expected tissue DMRs that overlap between samples by random chance
+
+# CG
+B <- 722 / 11327039
+P <- 1299 / 11327039
+expected <- B*P
+expected2 <- expected * 11327039
+expected2
+# 0.08279993
+## we have 46 DMRs that overlap... more than would be expected by chance
+
+
+# CHG
+B <- 7469 / 11327039
+P <- 8273 / 11327039
+expected <- B*P
+expected2 <- expected * 11327039
+expected2
+# 5.45518
+## we have 238 DMRs that overlap... more than would be expected by chance
+
+```
+
+--> The BvP V2 specific DMRs... what do they look like in BvP Root ??
+    --> identify uniq DMRs in BvP V2 --> pull B_root and P_root data --> density plot of difference between B and P root 
+```{r eval=F}
+#qsub -I -l walltime=3:00:00,nodes=1:ppn=1,mem=20G
+
+library(ggplot2)
+library(ggfortify)
+library(dplyr)
+
+setwd("/home/springer/nosha003/wgbs_schmitz/tiles_output")
+BP_V2 <- read.delim("B73_PH207_V2_DMR.txt", header=F, sep="\t")
+BP_Root <- read.delim("B73_PH207_Root_DMR.txt", header=F, sep="\t")
+B_Root <- read.delim("B73_Root_100bp_cov.txt", header=T, sep="\t")
+P_Root <- read.delim("PH207_Root_100bp_cov.txt", header=T, sep="\t")
+
+## V2 uniq DMRs to Root
+
+colnames(BP_V2) <- c("chr", "start", "end", "B", "P", "dmr")
+BP_V2["type"] <- "BP_V2"
+colnames(BP_Root) <- c("chr", "start", "end", "B", "P", "dmr")
+BP_Root["type"] <- "BP_Root"
+
+BP_V2_CG <- subset(BP_V2, BP_V2$dmr == "cg_dmr")
+BP_V2_CHG <- subset(BP_V2, BP_V2$dmr == "chg_dmr")
+BP_Root_CG <- subset(BP_Root, BP_Root$dmr == "cg_dmr")
+BP_Root_CHG <- subset(BP_Root, BP_Root$dmr == "chg_dmr")
+
+V2_uniq <- anti_join(BP_V2_CG, BP_Root_CG, by=c("chr", "start", "end"))
+# 60761 --> 73937 new calls
+
+B_P_Root <- inner_join(B_Root, P_Root, by=c("chr", "start", "end"))
+V2uniq_Root_CG <- left_join(V2_uniq, B_P_Root, by=c("chr", "start", "end"))
+
+V2uniq_Root_CG_noNA <- na.omit(V2uniq_Root_CG)
+# 58120 --> 56756 new calls
+
+png("BP_V2uniq_Root_density.png")
+plot(density(abs(V2uniq_Root_CG_noNA$CG_ratio.x - V2uniq_Root_CG_noNA$CG_ratio.y)))
+dev.off()
+## Plot shows a lot still above the 0.60 cutoff ?? Why are they not being called DMRs in Root ??
+
+V2uniq_Root_CG_noNA["diff"] <- (abs(V2uniq_Root_CG_noNA$CG_ratio.x - V2uniq_Root_CG_noNA$CG_ratio.y))
+V2uniq_Root_CG_noNA_diff0.60 <- subset(V2uniq_Root_CG_noNA, V2uniq_Root_CG_noNA$diff >= 0.60)
+# 41641 --> 16445 new calls (CHH coverage calls < 2 in one of genotypes)
+V2uniq_Root_sites <- V2uniq_Root_CG_noNA_diff0.60[,c(1:3,11,16,26,31)]
+V2uniq_Root_cov <- V2uniq_Root_CG_noNA_diff0.60[,c(1:3,22,37)]
+
+
+
+## run Root to V2
+B_V2 <- read.delim("B73_V2_100bp_cov.txt", header=T, sep="\t")
+P_V2 <- read.delim("PH207_V2_100bp_cov.txt", header=T, sep="\t")
+Root_uniq <- anti_join(BP_Root_CG, BP_V2_CG, by=c("chr", "start", "end"))
+B_P_V2 <- inner_join(B_V2, P_V2, by=c("chr", "start", "end"))
+Rootuniq_V2_CG <- left_join(Root_uniq, B_P_V2, by=c("chr", "start", "end"))
+Rootuniq_V2_CG_noNA <- na.omit(Rootuniq_V2_CG)
+
+png("BP_V2_Rootuniq_density.png")
+plot(density(abs(Rootuniq_V2_CG_noNA$CG_ratio.x - Rootuniq_V2_CG_noNA$CG_ratio.y)))
+dev.off()
+
+```
+
+** Something is wrong... passing tests in Root but not called as DMR...why ?? ... re-do DMR calls **
+
+cd /home/springer/nosha003/wgbs_schmitz/tiles_output/
+perl /home/springer/nosha003/scripts/DMR_calling.pl --file1_in /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_Root_100bp_cov.txt --file2_in /home/springer/nosha003/wgbs_schmitz/tiles_output/PH207_Root_100bp_cov.txt --DMR_out B73_PH207_Root_DMR.txt --cov_out B73_PH207_Root_cov.txt --sites1 3 --sites2 6 --coverage 2 --difference 60
+perl /home/springer/nosha003/scripts/DMR_calling.pl --file1_in /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_V2_100bp_cov.txt --file2_in /home/springer/nosha003/wgbs_schmitz/tiles_output/PH207_V2_100bp_cov.txt --DMR_out B73_PH207_V2_DMR.txt --cov_out B73_PH207_V2_cov.txt --sites1 3 --sites2 6 --coverage 2 --difference 60
+
+** After further digging... it appears that for several of the bins... the sites and coverage for CHH are not separated by tabs and therefore when running scripts the CHH coverage is registering oddly (as columns 17 and 18) and the bin would get tossed out... can't figure out why this is happening for only a subset of the bins though ?? --> something with the line not being properly tab delimited **
+
+--> re-run scripts from beginning of coverage addition and things seemed to have fixed?? 
+--> re-run analysis above (22 January 2018) including venn diagrams and barcharts
+
+
+
+### B73 v PH207 V2 DMR classifications (cov >= 5, diff >= 0.60)
+- Trusted (validated with Root)
+- Supported
+    - cov > 0 and diff > 40%
+    - cov > 2 and diff > 40%
+- Not supported 
+    - diff < 40%
+    
+--> What % of each category can be identified with BvP 5genos data ??
+
+```{r eval=F}
+#qsub -I -l walltime=3:00:00,nodes=1:ppn=1,mem=20G
+
+library(ggplot2)
+library(ggfortify)
+library(dplyr)
+
+setwd("/home/springer/nosha003/methylation_B73v4")
+B_leaf <- read.delim("B73_2_chhcov2_chr.txt", header=T, sep="\t")
+setwd("/home/springer/nosha003/methylation_B73v4/PH207")
+P_leaf <- read.delim("PH207_coverage_chhcov2_chr.txt", header=T, sep="\t")
+colnames(P_leaf) <- c("chr", "start", "end", "CG_ratio", "CG_C", "CG_CT", "CG_sites", "CG_cov", "CHG_ratio", "CHG_C", "CHG_CT", "CHG_sites", "CHG_cov", "CHH_ratio", "CHH_C", "CHH_CT", "CHH_sites", "CHH_cov")
+setwd("/home/springer/nosha003/wgbs_schmitz/tiles_output")
+BP_V2 <- read.delim("B73_PH207_V2_DMR.txt", header=F, sep="\t")
+BP_Root <- read.delim("B73_PH207_Root_DMR.txt", header=F, sep="\t")
+B_Root <- read.delim("B73_Root_100bp_cov.txt", header=T, sep="\t")
+P_Root <- read.delim("PH207_Root_100bp_cov.txt", header=T, sep="\t")
+B_V2 <- read.delim("B73_V2_100bp_cov.txt", header=T, sep="\t")
+P_V2 <- read.delim("PH207_V2_100bp_cov.txt", header=T, sep="\t")
+
+colnames(BP_V2) <- c("chr", "start", "end", "B", "P", "dmr")
+BP_V2["type"] <- "BP_V2"
+colnames(BP_Root) <- c("chr", "start", "end", "B", "P", "dmr")
+BP_Root["type"] <- "BP_V2"
+
+BP_V2_CG <- subset(BP_V2, BP_V2$dmr == "cg_dmr")
+BP_V2_CHG <- subset(BP_V2, BP_V2$dmr == "chg_dmr")
+BP_Root_CG <- subset(BP_Root, BP_Root$dmr == "cg_dmr")
+BP_Root_CHG <- subset(BP_Root, BP_Root$dmr == "chg_dmr")
+
+BP_leaf <- inner_join(B_leaf, P_leaf, by=c("chr", "start", "end"))
+BP_leaf["cg_diff"] <- abs(BP_leaf$CG_ratio.x - BP_leaf$CG_ratio.y)
+
+V2_Root <- rbind(BP_V2_CG, BP_Root_CG)
+V2_Root_overlap <- subset(V2_Root, duplicated(V2_Root[,1:3]))
+# nrow = 161238 bins overlap in DMR call between BP_V2 and BP_Root
+V2_Root_overlap_leaf <- left_join(V2_Root_overlap, BP_leaf, by=c("chr", "start", "end"))
+V2_Root_overlap_leaf_value <- subset(V2_Root_overlap_leaf, V2_Root_overlap_leaf$cg_diff != 'NA')
+# nrow = 49366 of those bins that overlap between BP_V2 and BP_Root have values (not NA) in BP_Leaf
+V2_Root_overlap_leaf_40 <- subset(V2_Root_overlap_leaf, V2_Root_overlap_leaf$cg_diff >= 0.40)
+# nrow = 46606 of those in BP_Leaf have >= 40% difference between B and P
+## 46606 / 49366 = 0.9440911
+
+V2_uniq <- anti_join(BP_V2_CG, BP_Root_CG, by=c("chr", "start", "end"))
+
+B_P_Root <- inner_join(B_Root, P_Root, by=c("chr", "start", "end"))
+V2uniq_Root_CG <- left_join(V2_uniq, B_P_Root, by=c("chr", "start", "end"))
+
+V2uniq_Root_CG["diff"] <- (abs(V2uniq_Root_CG$CG_ratio.x - V2uniq_Root_CG$CG_ratio.y))
+V2uniq_Root_CG_diff0.40 <- subset(V2uniq_Root_CG, V2uniq_Root_CG$diff >= 0.40)
+# nrow = 35625 of DMRs called in BP_V2 but NOT in BP_Root (uniq to V2) but BP_Root call is >= 0.40
+V2uniq_leaf <- left_join(V2uniq_Root_CG_diff0.40, BP_leaf, by=c("chr", "start", "end"))
+V2uniq_leaf_value <- subset(V2uniq_leaf, V2uniq_leaf$cg_diff != 'NA')
+# nrow = 4933 of those called uniq to V2 have values (not NA) in BP_Leaf
+V2uniq_leaf_40 <- subset(V2uniq_leaf, V2uniq_leaf$cg_diff >= 0.40)
+# nrow = 3658 of those in BP_Leaf have >= 40% difference between B and P
+## 3658 / 4933 = 0.7415366
+
+V2uniq_Root_CG_diff_less0.40 <- subset(V2uniq_Root_CG, V2uniq_Root_CG$diff < 0.40)
+# nrow = 23792 of DMRs called in BP_V2 but NOT in BP_Root (uniq to V2) but BP_Root call is < 0.40
+V2uniq_leaf <- left_join(V2uniq_Root_CG_diff_less0.40, BP_leaf, by=c("chr", "start", "end"))
+V2uniq_leaf_value <- subset(V2uniq_leaf, V2uniq_leaf$cg_diff != 'NA')
+# nrow = 1442 of those called uniq to V2 have values (not NA) in BP_Leaf
+V2uniq_leaf_40 <- subset(V2uniq_leaf, V2uniq_leaf$cg_diff >= 0.40)
+# nrow = 638 of those in BP_Leaf have >= 40% difference between B and P
+## 638 / 1442 = 0.4424411
+
+
+
+
+# --> opposite direction
+Root_uniq <- anti_join(BP_Root_CG, BP_V2_CG, by=c("chr", "start", "end"))
+
+B_P_V2 <- inner_join(B_V2, P_V2, by=c("chr", "start", "end"))
+Rootuniq_V2_CG <- left_join(Root_uniq, B_P_V2, by=c("chr", "start", "end"))
+
+Rootuniq_V2_CG["diff"] <- (abs(Rootuniq_V2_CG$CG_ratio.x - Rootuniq_V2_CG$CG_ratio.y))
+Rootuniq_V2_CG_diff0.40 <- subset(Rootuniq_V2_CG, Rootuniq_V2_CG$diff >= 0.40)
+# nrow = 28121 of DMRs called in BP_Root but NOT in BP_V2 (uniq to Root) but BP_V2 call is >= 0.40
+Rootuniq_leaf <- left_join(Rootuniq_V2_CG_diff0.40, BP_leaf, by=c("chr", "start", "end"))
+Rootuniq_leaf_value <- subset(Rootuniq_leaf, Rootuniq_leaf$cg_diff != 'NA')
+# nrow = 6623 of those called uniq to Root have values (not NA) in BP_Leaf
+Rootuniq_leaf_40 <- subset(Rootuniq_leaf, Rootuniq_leaf$cg_diff >= 0.40)
+# nrow = 4499 of those in BP_Leaf have >= 40% difference between B and P
+## 4499 / 6623 = 0.6792994
+
+Rootuniq_V2_CG_diff_less0.40 <- subset(Rootuniq_V2_CG, Rootuniq_V2_CG$diff < 0.40)
+# nrow = 17907 of DMRs called in BP_Root but NOT in BP_V2 (uniq to Root) but BP_V2 call is < 0.40
+Rootuniq_leaf <- left_join(Rootuniq_V2_CG_diff_less0.40, BP_leaf, by=c("chr", "start", "end"))
+Rootuniq_leaf_value <- subset(Rootuniq_leaf, Rootuniq_leaf$cg_diff != 'NA')
+# nrow = 2166 of those called uniq to Root have values (not NA) in BP_Leaf
+Rootuniq_leaf_40 <- subset(Rootuniq_leaf, Rootuniq_leaf$cg_diff >= 0.40)
+# nrow = 743 of those in BP_Leaf have >= 40% difference between B and P
+## 743 / 2166 = 0.3430286
+
+```
+
+```{r}
+# tissue_genotype <- matrix(c(46, 46, 106190, 106190, 676, 1253, 22574, 60761),ncol=4,byrow=TRUE)
+tissue_genotype <- matrix(c(46, 46, 161238, 161238, 0, 0, 28121, 35625, 676, 1253, 17907, 23792),ncol=4,byrow=TRUE)
+colnames(tissue_genotype) <- c("Tissue - B73", "Tissue - PH207", "Genotype - Root", "Genotype - Shoot")
+rownames(tissue_genotype) <- c("validated", "supported", "uniq")
+tissue_genotype <- as.table(tissue_genotype)
+tissue_genotype
+
+barplot(tissue_genotype, main="Tissue_Genotype DMRs", col=c("darkblue","blue", "red"), legend = rownames(tissue_genotype), args.legend = list(x = "topleft"))
+
+
+## blow up tissue info (too small in full barplot)
+tissue <- matrix(c(46, 46, 0, 0, 676, 1253),ncol=2,byrow=TRUE)
+colnames(tissue) <- c("Tissue - B73", "Tissue - PH207")
+rownames(tissue) <- c("validated", "supported", "uniq")
+tissue <- as.table(tissue)
+tissue
+
+barplot(tissue, col=c("darkblue","blue", "red"), ylim=c(0,2000))
+
+```
+
+
+
+_________________________________________________________________________
+
+## Test HOME algorithm
+https://www.biorxiv.org/content/early/2017/12/02/228221.full.pdf+html
+https://github.com/ListerLab/HOME/blob/master/README.md
+
+```{r eval=F}
+# on MSI command line
+
+cd /home/springer/nosha003/software
+module load python/2.7.1
+git clone https://github.com/ListerLab/HOME.git
+cd ./HOME
+pip install -r requirements.txt
+python setup.py install
+
+```
+
+
+## HOME method for calling DMRs
+https://www.biorxiv.org/content/biorxiv/early/2017/12/02/228221.full.pdf
+
+--> load necessary modules and installations on msi
+cd /home/springer/nosha003/software
+
+module load python/2.7.9
+module load python-pypy
+virtualenv --system-site-packages $HOME/my-pypy
+source $HOME/my-pypy/bin/activate
+
+git clone https://github.com/ListerLab/HOME.git
+cd ./HOME
+python setup.py install
+pip install Cython
+pip install -r requirements.txt
+
+
+```{r eval=F}
+# data from methylation alignments.... BSMAPratio
+cut -f 1,2,4,5,8,9 /scratch.global/nosha003/wgbs_schmitz/analysis/BSMAPratio/JN28_BS_S2_R1_001_BSMAP_out.txt > /scratch.global/nosha003/wgbs_schmitz/analysis/HOME/JN28_HOME.txt
+
+# sample file (sample name and path): /scratch.global/nosha003/wgbs_schmitz/analysis/HOME/sample_file.txt
+JN28_HOME	/scratch.global/nosha003/wgbs_schmitz/analysis/HOME
+JN30_HOME	/scratch.global/nosha003/wgbs_schmitz/analysis/HOME
+
+#14December2017
+#home.sh
+#HOME method for calling DMRs
+
+#!/bin/bash
+#PBS -l walltime=96:00:00,nodes=1:ppn=6,mem=24gb
+#PBS -o /scratch.global/nosha003/e_o/home_o
+#PBS -e /scratch.global/nosha003/e_o/home_e
+#PBS -N home
+#PBS -V
+#PBS -r n
+
+cd /home/springer/nosha003/software
+
+module load python/2.7.9
+
+/home/springer/nosha003/software/HOME/scripts/HOME-pairwise -t CG -i /scratch.global/nosha003/wgbs_schmitz/analysis/HOME/sample_file.txt -o /scratch.global/nosha003/wgbs_schmitz/analysis/HOME/
+
+#qsub /home/springer/nosha003/wgbs_schmitz/scripts/home.sh
+```
+
+** error **
+Traceback (most recent call last):
+  File "/home/springer/nosha003/software/HOME/scripts/HOME-pairwise", line 8, in <module>
+    import numpy as np
+  File "/soft/python/2.7.9/lib/python2.7/site-packages/numpy/__init__.py", line 170, in <module>
+    from . import add_newdocss
+  File "/soft/python/2.7.9/lib/python2.7/site-packages/numpy/add_newdocs.py", line 13, in <module>
+    from numpy.lib import add_newdoc
+  File "/soft/python/2.7.9/lib/python2.7/site-packages/numpy/lib/__init__.py", line 18, in <module>
+    from .polynomial import *
+  File "/soft/python/2.7.9/lib/python2.7/site-packages/numpy/lib/polynomial.py", line 19, in <module>
+    from numpy.linalg import eigvals, lstsq, inv
+  File "/soft/python/2.7.9/lib/python2.7/site-packages/numpy/linalg/__init__.py", line 51, in <module>
+    from .linalg import *
+  File "/soft/python/2.7.9/lib/python2.7/site-packages/numpy/linalg/linalg.py", line 29, in <module>
+    from numpy.linalg import lapack_lite, _umath_linalg
+ImportError: /soft/atlas/3.9.35/lib/libtatlas.so: undefined symbol: ATL_assert
+
+
+
+_____________________________________________________________
+
+
+## DMR overlap with ACRs
+```{r eval=F}
+# DMR call (coverage=2, difference=0.60): 
+# BvP_V2: /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR60.txt
+sort -k 1,1 -k 2,2n /scratch.global/nosha003/wgbs_schmitz/analysis/tiles/B73_PH207_V2_DMR60.txt > /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_V2_DMR60_2.txt
+# BvP_leaf: /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR.txt
+sort -k 1,1 -k 2,2n /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR.txt | grep -v 'Pt' | grep -v 'Mt' > /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR_sort.txt
+
+# ACR: /home/springer/nosha003/wgbs_schmitz/ACR/Updated_B73L.ARCpks_sort.bed
+wc -l /home/springer/nosha003/wgbs_schmitz/ACR/Updated_B73L.ARCpks_sort.bed
+    # 55216
+# random ACR: /home/springer/nosha003/wgbs_schmitz/ACR/Updated_B73L.ARCpks.random_sort.bed
+
+module load bedtools
+bedtools closest -d -b /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_V2_DMR60_2.txt -a /home/springer/nosha003/wgbs_schmitz/ACR/Updated_B73L.ARCpks_sort.bed > /home/springer/nosha003/wgbs_schmitz/ACR/Updated_B73L.ARCpks.BP_DMR.txt
+awk '{if ($14 == 0) print $0}' /home/springer/nosha003/wgbs_schmitz/ACR/Updated_B73L.ARCpks.BP_DMR.txt > /home/springer/nosha003/wgbs_schmitz/ACR/Updated_B73L.ARCpks.BP_DMR_overlap.txt
+cut -f 1-3 /home/springer/nosha003/wgbs_schmitz/ACR/Updated_B73L.ARCpks.BP_DMR_overlap.txt | uniq -c | wc -l
+    # 1099 of ACRs overlap with BP_V2 DMRs
+awk '{if ($11 < $12) print $0}' /home/springer/nosha003/wgbs_schmitz/ACR/Updated_B73L.ARCpks.BP_DMR_overlap.txt | wc -l
+    # 559 of the ACRs that overlap with DMRs are PH207 methylated
+
+awk '{if (($14 != 0) && $14 <= 500) print $0}' /home/springer/nosha003/wgbs_schmitz/ACR/Updated_B73L.ARCpks.BP_DMR.txt > /home/springer/nosha003/wgbs_schmitz/ACR/Updated_B73L.ARCpks.BP_DMR_within500.txt
+cut -f 1-3 /home/springer/nosha003/wgbs_schmitz/ACR/Updated_B73L.ARCpks.BP_DMR_within500.txt | uniq -c | wc -l
+    # 3571 of ACRs overlap with BP_leaf DMRs
+awk '{if ($11 < $12) print $0}' /home/springer/nosha003/wgbs_schmitz/ACR/Updated_B73L.ARCpks.BP_DMR_within500.txt | wc -l
+    # 2219 of the ACRs that overlap with DMRs are PH207 methylated
+
+
+bedtools closest -d -b /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_leaf_DMR_sort.txt -a /home/springer/nosha003/wgbs_schmitz/ACR/Updated_B73L.ARCpks_sort.bed > /home/springer/nosha003/wgbs_schmitz/ACR/Updated_B73L.ARCpks.BP_leaf_DMR.txt
+awk '{if ($14 == 0) print $0}' /home/springer/nosha003/wgbs_schmitz/ACR/Updated_B73L.ARCpks.BP_leaf_DMR.txt > /home/springer/nosha003/wgbs_schmitz/ACR/Updated_B73L.ARCpks.BP_leaf_DMR_overlap.txt
+cut -f 1-3 /home/springer/nosha003/wgbs_schmitz/ACR/Updated_B73L.ARCpks.BP_leaf_DMR_overlap.txt | uniq -c | wc -l
+    # 3283
+awk '{if (($14 != 0) && $14 <= 500) print $0}' /home/springer/nosha003/wgbs_schmitz/ACR/Updated_B73L.ARCpks.BP_leaf_DMR.txt > /home/springer/nosha003/wgbs_schmitz/ACR/Updated_B73L.ARCpks.BP_leaf_DMR_within500.txt
+cut -f 1-3 /home/springer/nosha003/wgbs_schmitz/ACR/Updated_B73L.ARCpks.BP_leaf_DMR_within500.txt | uniq -c | wc -l
+    # 4220
+
+# bedtools closest -d -b /home/springer/nosha003/wgbs_schmitz/tiles_output/B73_PH207_V2_DMR60_2.txt -a /home/springer/nosha003/wgbs_schmitz/ACR/Updated_B73L.ARCpks.random_sort.bed > /home/springer/nosha003/wgbs_schmitz/ACR/Updated_B73L.ARCpks.random.BP_DMR.txt
+# awk '{if ($14 == 0) print $0}' /home/springer/nosha003/wgbs_schmitz/ACR/Updated_B73L.ARCpks.random.BP_DMR.txt > /home/springer/nosha003/wgbs_schmitz/ACR/Updated_B73L.ARCpks.random.BP_DMR_overlap.txt
+# cut -f 1-3 /home/springer/nosha003/wgbs_schmitz/ACR/Updated_B73L.ARCpks.random.BP_DMR_overlap.txt | uniq -c | wc -l
+#     # 1131
+# awk '{if (($14 != 0) && $14 <= 500) print $0}' /home/springer/nosha003/wgbs_schmitz/ACR/Updated_B73L.ARCpks.random.BP_DMR.txt > /home/springer/nosha003/wgbs_schmitz/ACR/Updated_B73L.ARCpks.random.BP_DMR_within500.txt
+# cut -f 1-3 /home/springer/nosha003/wgbs_schmitz/ACR/Updated_B73L.ARCpks.random.BP_DMR_within500.txt | uniq -c | wc -l
+#     # 1382
+
+
+
+# ACR do not commonly overlap DMRs (methylated regions are not open chromatin regions)
+    ## 1099 / 55216 = 0.01990365 * 100 = 1.99% of ACRs overlap DMRs in BvP V2
+    ## 3283 / 55216 = 0.0594574 * 100 = 5.95% of ACRs overlap DMRs in BvP leaf
+# ACR are not commonly near DMRs (not overlapping but within 500bp of DMR)
+    ## 3571 / 55216 = 0.06467328 * 100 = 6.47% of ACRs overlap DMRs in BvP V2
+    ## 4220 / 55216 = 0.07642712 * 100 = 7.64% of ACRs overlap DMRs in BvP leaf
+
+```
+
+--> what is the conserved classification of these DMR-ACR overlaps
+```{r eval=F}
+# subset DMR-ACR overlap to only include 100% conserved ACRs
+perl /home/springer/nosha003/wgbs_schmitz/scripts/DMR_ACR_conserved.pl -I /home/springer/zhoux379/data/misc1/jackie.acr/09.tsv -i /home/springer/nosha003/wgbs_schmitz/ACR/Updated_B73L.ARCpks.BP_leaf_DMR_within500.txt -o /home/springer/nosha003/wgbs_schmitz/ACR/DMR_ACR_conserved.txt 
+
+4986 /home/springer/nosha003/wgbs_schmitz/ACR/Updated_B73L.ARCpks.BP_leaf_DMR_within500.txt
+1360 /home/springer/nosha003/wgbs_schmitz/ACR/DMR_ACR_conserved.txt
+
+```
+
+
+__________________________________________________________________________________________________________________________
+
+## Call DMRs between B73, PH207, and W22 (as well as between two W22 individuals)
+4 January 2018
+
+## Make id file
+column1: sequence_id_pe1
+column2: sequence_id_pe2
+column3: name
+column4: umgc_folder
+column5: scratch_folder
+column6: home_folder
+
+/home/springer/nosha003/wgbs/bpw/bpw_wgbs_id.txt
+
+JN25_BS_S8_R1_001 JN25_BS_S8_R2_001	B73_V2	170524_D00635_0241_BCB0RCANXX /scratch.global/nosha003/wgbs_schmitz/analysis/tiles /home/springer/nosha003/wgbs/bpw
+JN27_BS_S9_R1_001 JN27_BS_S9_R2_001 PH207_V2  170524_D00635_0241_BCB0RCANXX /scratch.global/nosha003/wgbs_schmitz/analysis/tiles /home/springer/nosha003/wgbs/bpw
+W22_1_R1_001	W22_1_R2_001 W22_1 171218_D00635_0314_ACC5BFANXX  /scratch.global/nosha003/wgbs/reads /home/springer/nosha003/wgbs/bpw 
+W22_3_R1_001	W22_3_R2_001 W22_3 171218_D00635_0314_ACC5BFANXX  /scratch.global/nosha003/wgbs/reads  /home/springer/nosha003/wgbs/bpw
+
+## Make 100bp tiles for CG, CHG, CHH
+```{r eval=F}
+#6Nov2017
+#wgbs_bins.sh
+#make counts for complete list of 100bp tiles (including those without data)
+	
+#!/bin/bash
+#PBS -l walltime=08:00:00,nodes=1:ppn=1,mem=5gb
+#PBS -o /scratch.global/nosha003/e_o/bins_o
+#PBS -e /scratch.global/nosha003/e_o/bins_e
+#PBS -N bins
+#PBS -V
+#PBS -r n
+
+SAMPLE1="$(/bin/sed -n ${PBS_ARRAYID}p ${LIST} | cut -f 1)"
+SAMPLE2="$(/bin/sed -n ${PBS_ARRAYID}p ${LIST} | cut -f 2)"
+NAME="$(/bin/sed -n ${PBS_ARRAYID}p ${LIST} | cut -f 3)"
+UMGC="$(/bin/sed -n ${PBS_ARRAYID}p ${LIST} | cut -f 4)"
+SCRATCH="$(/bin/sed -n ${PBS_ARRAYID}p ${LIST} | cut -f 5)"
+HOME="$(/bin/sed -n ${PBS_ARRAYID}p ${LIST} | cut -f 6)"
+
+# make complete 100bp bin files including no data bins
+# chr, start, stop, sites, C, CT, ratio
+perl /home/springer/nosha003/scripts/wgbs_bincounts.pl -i /home/springer/nosha003/database/B73v4/B73v4_100bp_bins.gff -I ${SCRATCH}/${SAMPLE1}_BSMAP_out.txt.100.CG.bed -o ${SCRATCH}/${NAME}_BSMAP_100bp.CG.bed
+perl /home/springer/nosha003/scripts/wgbs_bincounts.pl -i /home/springer/nosha003/database/B73v4/B73v4_100bp_bins.gff -I ${SCRATCH}/${SAMPLE1}_BSMAP_out.txt.100.CHG.bed -o ${SCRATCH}/${NAME}_BSMAP_100bp.CHG.bed
+perl /home/springer/nosha003/scripts/wgbs_bincounts.pl -i /home/springer/nosha003/database/B73v4/B73v4_100bp_bins.gff -I ${SCRATCH}/${SAMPLE1}_BSMAP_out.txt.100.CHH.bed -o ${SCRATCH}/${NAME}_BSMAP_100bp.CHH.bed
+
+#qsub -t 1-6 -v LIST=/home/springer/nosha003/wgbs/bpw/bpw_wgbs_id.txt /home/springer/nosha003/scripts/wgbs_bins.sh
+```
+
+## Combine methylation data per sample (CG, CHG, CHH) and Calculate coverage (with B73v4 sites)
+```{r eval=F}
+#6Nov2017
+#bins_sites_coverage.sh
+#use B73v4 sites data to calculate coverage 
+	
+#!/bin/bash
+#PBS -l walltime=08:00:00,nodes=1:ppn=6,mem=20gb
+#PBS -o /scratch.global/nosha003/e_o/bins_o
+#PBS -e /scratch.global/nosha003/e_o/bins_e
+#PBS -N bins
+#PBS -V
+#PBS -r n
+
+SAMPLE1="$(/bin/sed -n ${PBS_ARRAYID}p ${LIST} | cut -f 1)"
+SAMPLE2="$(/bin/sed -n ${PBS_ARRAYID}p ${LIST} | cut -f 2)"
+NAME="$(/bin/sed -n ${PBS_ARRAYID}p ${LIST} | cut -f 3)"
+UMGC="$(/bin/sed -n ${PBS_ARRAYID}p ${LIST} | cut -f 4)"
+SCRATCH="$(/bin/sed -n ${PBS_ARRAYID}p ${LIST} | cut -f 5)"
+HOME="$(/bin/sed -n ${PBS_ARRAYID}p ${LIST} | cut -f 6)"
+
+# combine methylation data per sample (CG, CHG, CHH)
+cd ${SCRATCH}
+paste ${NAME}_BSMAP_100bp.CG.bed ${NAME}_BSMAP_100bp.CHG.bed ${NAME}_BSMAP_100bp.CHH.bed | cut -f 1-7,11-14,18-21 > ${NAME}_100bp.txt 
+
+# use combined methylation data per sample and calculate coverage
+perl /home/springer/nosha003/scripts/wgbs_coverage.pl -i ${SCRATCH}/${NAME}_100bp.txt -I /home/springer/nosha003/methylation_B73v4/AGPv4_cg_sites_012017.bed -o ${HOME}/${NAME}_100bp_cov.txt
+
+#qsub -t 1-6 -v LIST=/home/springer/nosha003/wgbs/bpw/bpw_wgbs_id.txt /home/springer/nosha003/scripts/bins_sites_coverage.sh
+```
+
+--> combine all datasets (ratio and coverage)
+```{r eval=F}
+cd /home/springer/nosha003/wgbs/bpw
+
+paste B73_V2_100bp_cov.txt PH207_V2_100bp_cov.txt W22_1_100bp_cov.txt W22_3_100bp_cov.txt | cut -f 1-4,8,9,13,14,18,22,26,27,31,32,36,40,44,45,49,50,54,58,62,63,67,68,72,76,80,81,85,86,90,94,98,99,103,104,108 | sed 1d - > b_p_w_bins_cov.txt
+
+echo $'chr\tstart\tend\tBv2_CGratio\tBv2_CGcov\tBv2_CHGratio\tBv2_CHGcov\tBv2_CHHratio\tBv2_CHHcov\tPv2_CGratio\tPv2_CGcov\tPv2_CHGratio\tPv2_CHGcov\tPv2_CHHratio\tPv2_CHHcov\tW1_CGratio\tW1_CGcov\tW1_CHGratio\tW2_CHGcov\tW1_CHHratio\tW1_CHHcov\tW2_CGratio\tW2_CGcov\tW2_CHGratio\tW2_CHGcov\tW2_CHHratio\tW2_CHHcov' | cat - b_p_w_bins_cov.txt > b_p_w_bins_cov_header.txt
+```
+
+## IGV 
+```{r eval=F}
+awk '{print $1"\t"$2"\t"$3"\t""wgbs""\t"$4"\t"$6"\t"$8"\t"$10"\t"$12"\t"$14"\t"$16"\t"$18"\t"$20"\t"$22"\t"$24"\t"$26"\t"$28"\t"$30"\t"$32"\t"34"\t"36"\t38"}' b_p_w_bins_cov_header.txt > b_p_w_bins_cov_header.igv 
+```
+
+
+## Calling DMRs
+--> DMR criteria (sites and coverage)
+```{r eval=F}
+# CG and CHG --> 3 sites and 5 coverage
+# CHH --> 6 sites and 5 coverage
+
+cd /home/springer/nosha003/wgbs/bpw 
+
+perl /home/springer/nosha003/scripts/DMR_calling.pl --file1_in B73_V2_100bp_cov.txt --file2_in PH207_V2_100bp_cov.txt --DMR_out B73_PH207_V2_DMR.txt --sites1 3 --sites2 6 --coverage 5 --difference 60
+perl /home/springer/nosha003/scripts/DMR_calling.pl --file1_in B73_V2_100bp_cov.txt --file2_in W22_1_100bp_cov.txt --DMR_out B73_W22_DMR.txt --sites1 3 --sites2 6 --coverage 5 --difference 60
+perl /home/springer/nosha003/scripts/DMR_calling.pl --file1_in W22_1_100bp_cov.txt --file2_in W22_3_100bp_cov.txt --DMR_out W22_individuals_DMR.txt --sites1 3 --sites2 6 --coverage 5 --difference 60
+
+```
+
+
+--> how many DMRs overlap with B73 TEs?
+bedtools intersect -a B73_PH207_V2_DMR.txt -b /home/springer/nosha003/database/B73v4/te/B73v4.structuralTE.filtered.sort.noHelitron.gff3 -wo > /scratch.global/nosha003/BP_DMR_TEoverlap.txt
+cut -f 1-3 /scratch.global/nosha003/BP_DMR_TEoverlap.txt | uniq | wc -l
+
+146372 / 426875 = 0.3428919 = 34% of BtoP DMRs overlap B TEs
+
