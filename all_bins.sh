@@ -1,6 +1,7 @@
 #28June2017
 #all_bins.sh
 #make counts for complete list of 100bp tiles (including those without data)
+###
 	
 #!/bin/bash
 #PBS -l walltime=08:00:00,nodes=1:ppn=1,mem=5gb
